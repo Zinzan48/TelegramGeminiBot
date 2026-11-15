@@ -78,7 +78,7 @@ public static class CliPreflight
 
         lines.Add("Install: " + info.InstallCommand);
         lines.Add("Docs: " + info.DocsUrl);
-        lines.Add("Or run: dotnet run --project TelegramGeminiBot -- doctor --install");
+        lines.Add("Or run: " + CommandHints.Doctor(install: true));
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -157,7 +157,7 @@ public static class CliPreflight
                 !string.IsNullOrWhiteSpace(options.GeminiApiKey)
                     ? new PreflightCheck("Authentication", CheckStatus.Ok, "Gemini API key is configured (modelProvider: gemini).")
                     : new PreflightCheck("Authentication", CheckStatus.Error, "AntigravityAuth is GeminiApiKey but GeminiApiKey is empty.",
-                        "dotnet user-secrets --project TelegramGeminiBot set \"GeminiProfiles:0:GeminiApiKey\" \"<key>\""),
+                        CommandHints.SetSetting("GeminiProfiles:0:GeminiApiKey", "<key>")),
             _ =>
                 new PreflightCheck("Authentication", CheckStatus.Warning,
                     "Account sign-in cannot be verified without spending quota; a missing sign-in is reported on the first message.",

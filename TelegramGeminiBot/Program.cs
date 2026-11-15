@@ -9,7 +9,14 @@ var isDoctor = args.Length > 0 && string.Equals(args[0], "doctor", StringCompari
 var doctorInstall = isDoctor && args.Skip(1).Any(a => string.Equals(a, "--install", StringComparison.OrdinalIgnoreCase));
 var hostArgs = isDoctor ? args.Skip(1).Where(a => !string.Equals(a, "--install", StringComparison.OrdinalIgnoreCase)).ToArray() : args;
 
-var builder = Host.CreateApplicationBuilder(hostArgs);
+// Use the program's folder, not the current directory, so appsettings.json and the policy files are
+// found when the bot is started from elsewhere or as a service.
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = hostArgs,
+    ContentRootPath = AppContext.BaseDirectory
+});
+CommandHints.IsDevelopment = builder.Environment.IsDevelopment();
 
 var botProfiles = builder.Configuration.GetSection("BotProfiles").Get<BotProfile[]>() ?? [];
 var geminiProfiles = builder.Configuration.GetSection("GeminiProfiles").Get<GeminiProfile[]>() ?? [];
@@ -48,7 +55,7 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 builder.Services.AddSingleton(sp =>
 {
     var options = sp.GetRequiredService<IOptions<ChatHistoryOptions>>().Value;
-    return new ChatHistoryStore(options.DatabasePath);
+    return new ChatHistoryStore(Path.GetFullPath(options.DatabasePath, builder.Environment.ContentRootPath));
 });
 
 builder.Services.AddSingleton(TimeProvider.System);

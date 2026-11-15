@@ -6,7 +6,7 @@ using TelegramGeminiBot.Services;
 namespace TelegramGeminiBot;
 
 /// <summary>
-/// <c>dotnet run --project TelegramGeminiBot -- doctor [--install]</c>: checks everything the bot needs
+/// The <c>doctor [--install]</c> command: checks everything the bot needs
 /// without starting it, prints a fix for each problem, and can run the official CLI installer.
 /// </summary>
 public static class Doctor
@@ -20,7 +20,7 @@ public static class Doctor
             new(".NET runtime", CheckStatus.Ok, Environment.Version.ToString()),
             string.IsNullOrWhiteSpace(bot.Token)
                 ? new("Telegram bot token", CheckStatus.Error, "Not configured.",
-                    "dotnet user-secrets --project TelegramGeminiBot set \"BotProfiles:0:Token\" \"<token from @BotFather>\"")
+                    CommandHints.SetSetting("BotProfiles:0:Token", "<token from @BotFather>"))
                 : new("Telegram bot token", CheckStatus.Ok, "Configured (value hidden)."),
             CheckChatAccess(bot)
         };
@@ -55,7 +55,7 @@ public static class Doctor
         }
         else if (cliMissing)
         {
-            Console.WriteLine("Tip: run `dotnet run --project TelegramGeminiBot -- doctor --install` to install it interactively.");
+            Console.WriteLine($"Tip: run `{CommandHints.Doctor(install: true)}` to install it interactively.");
         }
 
         var errors = checks.Count(c => c.Status == CheckStatus.Error);
@@ -74,7 +74,7 @@ public static class Doctor
             ? new("Chat allow-list", CheckStatus.Warning, "AllowAllChats is true: anyone who finds the bot can use it.")
             : new("Chat allow-list", CheckStatus.Warning, "AllowedChatIds is empty: the bot will ignore every chat.",
                 "Start the bot, message it, copy the chat ID from the 'Ignored message from chat <id>' log line, then:" + Environment.NewLine +
-                "dotnet user-secrets --project TelegramGeminiBot set \"BotProfiles:0:AllowedChatIds:0\" \"<chat id>\"");
+                CommandHints.SetSetting("BotProfiles:0:AllowedChatIds:0", "<chat id>"));
     }
 
     private static async Task<PreflightCheck> CheckNodeAsync(CancellationToken cancellationToken)

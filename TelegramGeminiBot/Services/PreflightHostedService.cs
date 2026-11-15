@@ -34,7 +34,7 @@ public sealed class PreflightHostedService(IOptions<GeminiOptions> options, ILog
         {
             throw new InvalidOperationException(
                 "Preflight failed: " + string.Join("; ", errors.Select(e => $"{e.Name}: {e.Detail}")) +
-                ". Run `dotnet run --project TelegramGeminiBot -- doctor` for step-by-step instructions.");
+                $". Run `{CommandHints.Doctor()}` for step-by-step instructions.");
         }
     }
 
