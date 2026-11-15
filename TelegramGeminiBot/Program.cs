@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using TelegramGeminiBot;
@@ -6,17 +5,32 @@ using TelegramGeminiBot.Configuration;
 using TelegramGeminiBot.Services;
 using TelegramGeminiBot.Storage;
 
-var builder = Host.CreateApplicationBuilder(args);
+// `doctor [--install]` checks prerequisites without starting the bot.
+var isDoctor = args.Length > 0 && string.Equals(args[0], "doctor", StringComparison.OrdinalIgnoreCase);
+var doctorInstall = isDoctor && args.Skip(1).Any(a => string.Equals(a, "--install", StringComparison.OrdinalIgnoreCase));
+var hostArgs = isDoctor ? args.Skip(1).Where(a => !string.Equals(a, "--install", StringComparison.OrdinalIgnoreCase)).ToArray() : args;
+
+var builder = Host.CreateApplicationBuilder(hostArgs);
 
 var botProfiles = builder.Configuration.GetSection("BotProfiles").Get<BotProfile[]>() ?? [];
 var geminiProfiles = builder.Configuration.GetSection("GeminiProfiles").Get<GeminiProfile[]>() ?? [];
 
-var activeBot = ResolveProfile(botProfiles, builder.Configuration.GetValue<string>("ActiveProfiles:Bot"));
-var activeGemini = ResolveProfile(geminiProfiles, builder.Configuration.GetValue<string>("ActiveProfiles:Gemini"));
+var activeBot = ProfileSetup.ResolveProfile(botProfiles, builder.Configuration.GetValue<string>("ActiveProfiles:Bot"));
+var activeGemini = ProfileSetup.ResolveProfile(geminiProfiles, builder.Configuration.GetValue<string>("ActiveProfiles:Gemini"));
 
-ValidateProfile(activeBot);
-ValidateProfile(activeGemini);
-PrepareGeminiPaths(activeGemini, builder.Environment.ContentRootPath);
+ProfileSetup.ApplyGeminiDefaults(activeGemini, builder.Environment.ContentRootPath, AppContext.BaseDirectory, createDirectories: !isDoctor);
+
+if (isDoctor)
+{
+    return await Doctor.RunAsync(activeBot, activeGemini, doctorInstall, CancellationToken.None);
+}
+
+ProfileSetup.ValidateAnnotations(activeBot);
+ProfileSetup.ValidateAnnotations(activeGemini);
+if (ProfileSetup.ValidateBackendAccess(activeBot, activeGemini) is { } accessError)
+{
+    throw new InvalidOperationException(accessError);
+}
 
 builder.Services.AddSingleton<IOptions<BotOptions>>(Options.Create<BotOptions>(activeBot));
 builder.Services.AddSingleton<IOptions<GeminiOptions>>(Options.Create<GeminiOptions>(activeGemini));
@@ -44,84 +58,20 @@ builder.Services.AddSingleton(sp => new UserRateLimiter(
     TimeSpan.FromMinutes(1),
     sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<ChatQueue>();
-builder.Services.AddSingleton<GeminiCliRunner>();
+
+if (activeGemini.Backend == AiBackend.Antigravity)
+{
+    builder.Services.AddSingleton<IAiCliRunner, AntigravityCliRunner>();
+}
+else
+{
+    builder.Services.AddSingleton<IAiCliRunner, GeminiCliRunner>();
+}
+
+// Registered first so it finishes (or stops the host) before Worker starts polling Telegram.
+builder.Services.AddHostedService<PreflightHostedService>();
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();
-host.Run();
-
-static TProfile ResolveProfile<TProfile>(TProfile[] profiles, string? requestedName) where TProfile : INamedProfile
-{
-    var kind = typeof(TProfile).Name;
-    if (profiles.Length == 0)
-    {
-        throw new InvalidOperationException($"No {kind} entries found in configuration.");
-    }
-
-    if (string.IsNullOrWhiteSpace(requestedName))
-    {
-        return profiles[0];
-    }
-
-    if (requestedName.Contains(','))
-    {
-        throw new InvalidOperationException(
-            $"Only one active {kind} is supported, but ActiveProfiles lists '{requestedName}'. Run one bot instance per token.");
-    }
-
-    return profiles.FirstOrDefault(p => string.Equals(p.Name, requestedName.Trim(), StringComparison.OrdinalIgnoreCase))
-        ?? throw new InvalidOperationException(
-            $"Active profile '{requestedName}' not found for {kind}. Available: {string.Join(", ", profiles.Select(p => p.Name))}");
-}
-
-static void ValidateProfile(object profile)
-{
-    var results = new List<ValidationResult>();
-    if (!Validator.TryValidateObject(profile, new ValidationContext(profile), results, validateAllProperties: true))
-    {
-        throw new InvalidOperationException(
-            $"Invalid {profile.GetType().Name}: {string.Join("; ", results.Select(r => r.ErrorMessage))}");
-    }
-}
-
-static void PrepareGeminiPaths(GeminiOptions gemini, string contentRoot)
-{
-    // The CLI must never run inside the bot's own folder: that folder holds the bot token
-    // (appsettings / secrets) and every chat's history database.
-    var workingDirectory = string.IsNullOrWhiteSpace(gemini.WorkingDirectory)
-        ? Path.Combine(contentRoot, "gemini-workspace")
-        : Path.GetFullPath(gemini.WorkingDirectory, contentRoot);
-
-    if (IsSameOrParent(workingDirectory, contentRoot) || IsSameOrParent(workingDirectory, AppContext.BaseDirectory))
-    {
-        throw new InvalidOperationException(
-            $"Gemini WorkingDirectory '{workingDirectory}' contains the bot's own files. Point it to a dedicated empty directory.");
-    }
-
-    Directory.CreateDirectory(workingDirectory);
-    gemini.WorkingDirectory = workingDirectory;
-
-    if (!string.IsNullOrWhiteSpace(gemini.CliHome))
-    {
-        gemini.CliHome = Path.GetFullPath(gemini.CliHome, contentRoot);
-        Directory.CreateDirectory(gemini.CliHome);
-    }
-
-    if (!string.IsNullOrWhiteSpace(gemini.PolicyPath))
-    {
-        var policyPath = Path.GetFullPath(gemini.PolicyPath, AppContext.BaseDirectory);
-        if (!File.Exists(policyPath) && !Directory.Exists(policyPath))
-        {
-            throw new InvalidOperationException($"Gemini PolicyPath '{policyPath}' does not exist.");
-        }
-
-        gemini.PolicyPath = policyPath;
-    }
-}
-
-static bool IsSameOrParent(string candidate, string protectedPath)
-{
-    var a = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate)) + Path.DirectorySeparatorChar;
-    var b = Path.TrimEndingDirectorySeparator(Path.GetFullPath(protectedPath)) + Path.DirectorySeparatorChar;
-    return b.StartsWith(a, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-}
+await host.RunAsync();
+return 0;

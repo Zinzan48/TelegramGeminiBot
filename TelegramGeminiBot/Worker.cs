@@ -16,7 +16,7 @@ public sealed class Worker : BackgroundService
     private readonly BotOptions _botOptions;
     private readonly ChatHistoryOptions _historyOptions;
     private readonly ChatHistoryStore _historyStore;
-    private readonly GeminiCliRunner _gemini;
+    private readonly IAiCliRunner _gemini;
     private readonly ChatQueue _chatQueue;
     private readonly UserRateLimiter _rateLimiter;
     private readonly ConcurrentDictionary<Task, byte> _inFlight = new();
@@ -29,7 +29,7 @@ public sealed class Worker : BackgroundService
         IOptions<BotOptions> botOptions,
         IOptions<ChatHistoryOptions> historyOptions,
         ChatHistoryStore historyStore,
-        GeminiCliRunner gemini,
+        IAiCliRunner gemini,
         ChatQueue chatQueue,
         UserRateLimiter rateLimiter)
     {
@@ -99,7 +99,7 @@ public sealed class Worker : BackgroundService
                 offset = update.Id + 1;
 
                 // Handle each update in the background so a slow Gemini call in one chat does not
-                // block every other chat. ChatQueue keeps each chat serialized and GeminiCliRunner
+                // block every other chat. ChatQueue keeps each chat serialized and the CLI runner
                 // caps the number of concurrent CLI processes.
                 var task = HandleUpdateSafeAsync(update, stoppingToken);
                 _inFlight.TryAdd(task, 0);
@@ -184,14 +184,15 @@ public sealed class Worker : BackgroundService
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Gemini CLI timed out for chat {ChatId}.", chatId);
-            await _botClient.SendMessage(message.Chat, "Gemini CLI timed out. Please try again.", cancellationToken: cancellationToken);
+            _logger.LogWarning("AI CLI timed out for chat {ChatId}.", chatId);
+            await _botClient.SendMessage(message.Chat, "The AI took too long to answer. Please try again.", cancellationToken: cancellationToken);
             return;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Gemini CLI error for chat {ChatId}.", chatId);
-            await _botClient.SendMessage(message.Chat, "Gemini CLI error. Please try again later.", cancellationToken: cancellationToken);
+            // Details (including sign-in instructions) stay in the log; users only see a generic message.
+            _logger.LogError(ex, "AI CLI error for chat {ChatId}.", chatId);
+            await _botClient.SendMessage(message.Chat, "Something went wrong while asking the AI. Please try again later.", cancellationToken: cancellationToken);
             return;
         }
 

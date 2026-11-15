@@ -1,11 +1,11 @@
 using System.Diagnostics;
-using System.Text;
 using Microsoft.Extensions.Options;
 using TelegramGeminiBot.Configuration;
 
 namespace TelegramGeminiBot.Services;
 
-public sealed class GeminiCliRunner : IDisposable
+/// <summary>Runs prompts through Google Gemini CLI (<c>gemini</c>) in headless mode.</summary>
+public sealed class GeminiCliRunner : IAiCliRunner, IDisposable
 {
     private readonly GeminiOptions _options;
     private readonly ILogger<GeminiCliRunner> _logger;
@@ -20,15 +20,57 @@ public sealed class GeminiCliRunner : IDisposable
 
     public async Task<string> RunAsync(string prompt, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            throw new ArgumentException("Prompt is required.", nameof(prompt));
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
 
         await _concurrency.WaitAsync(cancellationToken);
         try
         {
-            return await RunProcessAsync(prompt, cancellationToken);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = _options.ExecutablePath,
+                WorkingDirectory = _options.WorkingDirectory
+            };
+
+            foreach (var argument in BuildArguments(promptArgument: _options.UseHeadless ? null : prompt))
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_options.CliHome))
+            {
+                startInfo.Environment["GEMINI_CLI_HOME"] = _options.CliHome;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_options.GeminiApiKey))
+            {
+                startInfo.Environment["GEMINI_API_KEY"] = _options.GeminiApiKey;
+            }
+
+            // Never log the prompt itself: it contains users' messages and chat history.
+            _logger.LogInformation("Starting Gemini CLI: {Args} (prompt length {Length})",
+                string.Join(' ', BuildArguments(promptArgument: null)), prompt.Length);
+
+            var result = await CliProcess.RunAsync(
+                startInfo,
+                _options.UseHeadless ? prompt : null,
+                TimeSpan.FromSeconds(_options.PromptTimeoutSeconds),
+                cancellationToken);
+
+            if (result.ExitCode != 0)
+            {
+                var stderr = result.StandardError.Trim();
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr)
+                    ? $"gemini CLI exited with code {result.ExitCode}."
+                    : stderr);
+            }
+
+            var output = result.StandardOutput.Trim();
+            if (string.IsNullOrWhiteSpace(output))
+            {
+                throw new InvalidOperationException("gemini CLI returned empty output.");
+            }
+
+            return output;
         }
         finally
         {
@@ -38,101 +80,7 @@ public sealed class GeminiCliRunner : IDisposable
 
     public void Dispose() => _concurrency.Dispose();
 
-    private async Task<string> RunProcessAsync(string prompt, CancellationToken cancellationToken)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = _options.ExecutablePath,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardInputEncoding = Encoding.UTF8,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            WorkingDirectory = _options.WorkingDirectory
-        };
-
-        if (!string.IsNullOrWhiteSpace(_options.CliHome))
-        {
-            startInfo.Environment["GEMINI_CLI_HOME"] = _options.CliHome;
-        }
-
-        foreach (var argument in BuildArguments(includePrompt: !_options.UseHeadless ? prompt : null))
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        using var process = new Process { StartInfo = startInfo };
-
-        var stdoutBuilder = new StringBuilder();
-        var stderrBuilder = new StringBuilder();
-        process.OutputDataReceived += (_, args) => { if (args.Data is not null) stdoutBuilder.AppendLine(args.Data); };
-        process.ErrorDataReceived += (_, args) => { if (args.Data is not null) stderrBuilder.AppendLine(args.Data); };
-
-        // Never log the prompt itself: it contains users' messages and chat history.
-        _logger.LogInformation("Starting Gemini CLI: {Args} (prompt length {Length})",
-            string.Join(' ', BuildArguments(includePrompt: null)), prompt.Length);
-
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Failed to start gemini CLI process.");
-        }
-
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        if (_options.UseHeadless)
-        {
-            await process.StandardInput.WriteAsync(prompt.AsMemory(), cancellationToken);
-            await process.StandardInput.FlushAsync(cancellationToken);
-        }
-
-        process.StandardInput.Close();
-
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.PromptTimeoutSeconds));
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-        try
-        {
-            await process.WaitForExitAsync(linkedCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to kill gemini CLI process after timeout.");
-            }
-
-            throw;
-        }
-
-        if (process.ExitCode != 0)
-        {
-            var stderr = stderrBuilder.ToString().Trim();
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr)
-                ? $"gemini CLI exited with code {process.ExitCode}."
-                : stderr);
-        }
-
-        var output = stdoutBuilder.ToString().Trim();
-        if (string.IsNullOrWhiteSpace(output))
-        {
-            throw new InvalidOperationException("gemini CLI returned empty output.");
-        }
-
-        return output;
-    }
-
-    private List<string> BuildArguments(string? includePrompt)
+    private List<string> BuildArguments(string? promptArgument)
     {
         var args = new List<string>();
 
@@ -154,10 +102,10 @@ public sealed class GeminiCliRunner : IDisposable
             args.Add(_options.PolicyPath);
         }
 
-        if (includePrompt is not null)
+        if (promptArgument is not null)
         {
             args.Add("--prompt");
-            args.Add(includePrompt);
+            args.Add(promptArgument);
         }
 
         return args;
