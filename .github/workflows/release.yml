@@ -126,6 +126,8 @@ jobs:
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > notes.md
+          # In-page links such as (#upgrading-from-010) would break on the release page.
+          sed -i "s|](#|](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md#|g" notes.md
           cat >> notes.md <<EOF
 
           ## Downloads

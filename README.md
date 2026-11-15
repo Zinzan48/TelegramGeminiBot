@@ -45,7 +45,42 @@ agy 1.5.9, on 2026-11-15. Asked to read a file containing a fake token, it repli
 kept working and the conversation did not appear in the personal agy history. agy updates itself, so run
 `doctor` after an update. The Gemini CLI backend was not tested end to end for this release.
 
+## Download a release
+
+Every [release](https://github.com/Zinzan48/TelegramGeminiBot/releases) has six zips, built by GitHub Actions from
+the tagged commit:
+
+| Platform | Includes .NET (about 78 MB) | Needs the .NET 10 Runtime (about 8 MB) |
+|---|---|---|
+| Windows x64 | `…-win-x64-self-contained.zip` | `…-win-x64-framework-dependent.zip` |
+| Linux x64 | `…-linux-x64-self-contained.zip` | `…-linux-x64-framework-dependent.zip` |
+| Linux Arm64 | `…-linux-arm64-self-contained.zip` | `…-linux-arm64-framework-dependent.zip` |
+
+The framework-dependent zips need the [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The
+plain ".NET Runtime" is enough; the ASP.NET Core and Desktop runtimes are not needed.
+
+Unzip it and run the doctor first:
+
+```bash
+./TelegramGeminiBot doctor        # Windows: .\TelegramGeminiBot.exe doctor
+```
+
+A release build runs in the Production environment and does not read user-secrets. Give it the token and chat
+IDs as environment variables (`BotProfiles__0__Token`, `BotProfiles__0__AllowedChatIds__0`), or edit the
+`appsettings.json` in the unzipped folder, which is your own copy and never leaves your machine. The chat
+database, `gemini-workspace` and `agy-home` are created next to the program.
+
+The executables are not code-signed, so Windows SmartScreen may stop the first run; click "More info", then "Run
+anyway". To check that a zip came from this repository's build:
+
+```bash
+gh attestation verify TelegramGeminiBot-0.2.0-win-x64-self-contained.zip --repo Zinzan48/TelegramGeminiBot
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
 ## Requirements
+
+To run from source you need:
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). .NET 10 is the current LTS release, supported
   until 2028-11-14, and the project targets it. `dotnet --version` should print 10.0.x; install the latest patch,

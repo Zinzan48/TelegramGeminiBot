@@ -45,11 +45,22 @@ The project targets .NET 10, the current LTS release (supported until 2028-11-14
   it off.
 - `GeminiApiKey` setting, to be kept in user-secrets or environment variables.
 - Per-user rate limit, `MaxRequestsPerUserPerMinute` (default 10).
-- MIT license, `SECURITY.md`, English and Traditional Chinese READMEs, GitHub Actions CI, Dependabot and 57
+- Prebuilt releases. Pushing a `v*` tag makes GitHub Actions build six zips (win-x64, linux-x64 and linux-arm64,
+  each self-contained and framework-dependent) and attach them to the release with `SHA256SUMS.txt` and a build
+  provenance attestation.
+- MIT license, `SECURITY.md`, English and Traditional Chinese READMEs, GitHub Actions CI, Dependabot and 61
   unit tests.
 
 Checked against agy 1.5.9: a request to read a file came back as "Permission denied for read_file", and the
 keyring sign-in kept working with the separate `CliHome`.
+
+### Changed
+
+- `appsettings.json`, `DatabasePath`, the default workspace and `agy-home` are found relative to the program's
+  folder instead of the current directory, so the bot also works when started from elsewhere or as a service.
+  When you run from source, the chat database therefore moves to `TelegramGeminiBot/bin/<configuration>/net10.0/data/`.
+- Fix instructions printed by `doctor` and the startup check match how you run the bot: `dotnet run` and
+  user-secrets from source, the executable and environment variables in a release build.
 
 ### Security
 

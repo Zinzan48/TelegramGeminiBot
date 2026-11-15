@@ -36,7 +36,40 @@ Antigravity 這邊，我們的判斷依據是一則[論壇回覆](https://discus
 用預設的 `CliHome` 時登入照常可用，對話也沒有跑進個人的 agy 紀錄。agy 會自己更新，更新後重跑一次 `doctor`。
 Gemini CLI 後端這一版沒有做端到端測試。
 
+## 下載 Release 版本
+
+每個 [release](https://github.com/Zinzan48/TelegramGeminiBot/releases) 都有六個 zip，由 GitHub Actions 從打 tag 的那個 commit 編譯：
+
+| 平台 | 內含 .NET（約 78 MB） | 需要 .NET 10 Runtime（約 8 MB） |
+|---|---|---|
+| Windows x64 | `…-win-x64-self-contained.zip` | `…-win-x64-framework-dependent.zip` |
+| Linux x64 | `…-linux-x64-self-contained.zip` | `…-linux-x64-framework-dependent.zip` |
+| Linux Arm64 | `…-linux-arm64-self-contained.zip` | `…-linux-arm64-framework-dependent.zip` |
+
+framework-dependent 版要先裝 [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)，選「.NET Runtime」那一項就夠了，
+不用裝 ASP.NET Core Runtime 或 Desktop Runtime。
+
+解壓後先跑一次 doctor：
+
+```bash
+./TelegramGeminiBot doctor        # Windows：.\TelegramGeminiBot.exe doctor
+```
+
+Release 版是用 Production 環境執行，不會讀 user-secrets。token 和 chat ID 請用環境變數給
+（`BotProfiles__0__Token`、`BotProfiles__0__AllowedChatIds__0`），或直接改解壓資料夾裡的 `appsettings.json`。
+那份是你自己的副本，只存在你的電腦上。聊天資料庫、`gemini-workspace` 和 `agy-home` 會建在程式旁邊。
+
+執行檔沒有程式碼簽章，第一次執行時 Windows SmartScreen 可能會擋下來，點「其他資訊」再點「仍要執行」即可。
+想確認 zip 真的是這個 repo 編譯出來的，可以這樣驗證：
+
+```bash
+gh attestation verify TelegramGeminiBot-0.2.0-win-x64-self-contained.zip --repo Zinzan48/TelegramGeminiBot
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
 ## 需求
+
+從原始碼執行需要：
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)。.NET 10 是目前的 LTS 版本，支援到 2028-11-14，
   專案就是以它為目標。`dotnet --version` 應該顯示 10.0.x；請裝最新的 patch，安全性修正都靠它進來。
