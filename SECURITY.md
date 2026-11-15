@@ -1,41 +1,38 @@
-# Security Policy
+# Security policy
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for security problems. Use GitHub's
-[private vulnerability reporting](https://github.com/Zinzan48/TelegramGeminiBot/security/advisories/new)
-instead. Include the affected version or commit, the configuration you used
-and the steps to reproduce.
+Please report security problems through GitHub's
+[private vulnerability reporting](https://github.com/Zinzan48/TelegramGeminiBot/security/advisories/new),
+not a public issue. Include the version or commit, your configuration and the steps to reproduce.
 
 ## Threat model
 
-Everyone who can message the bot is untrusted. The bot defends against them with:
+Anyone who can message the bot is untrusted, and their text ends up as input to an AI agent on your machine.
 
-- **Chat allow-list, fail closed.** `AllowedChatIds` empty means the bot answers
-  nobody. `AllowAllChats: true` is an explicit, logged opt-in.
-- **No tools for the model.** Gemini CLI runs with
-  `gemini-policies/deny-all-tools.toml` (`--policy`), which denies every built-in and MCP tool.
-  Antigravity CLI runs with `antigravity-policies/deny-all-tools.json` (`--settings`), `--sandbox`
-  and `--disable-slash-commands`. In both cases, a message cannot make the CLI read files, run
-  commands, browse or call MCP servers.
-- **Owner-only Antigravity account mode.** With a personal agy sign-in, the bot refuses to start
-  unless it serves exactly one private chat.
-- **Isolated working directory.** The bot refuses to run the CLI inside its own
-  folder, where the token and chat database live.
-- **Per-user rate limit** (`MaxRequestsPerUserPerMinute`).
+The bot only answers chats listed in `AllowedChatIds`. If the list is empty it answers no one; opening it to
+everyone takes `AllowAllChats: true`, and the bot logs a warning when that is set. With a personal agy sign-in,
+it refuses to start unless the list holds exactly one private chat.
 
-Out of scope: an operator who sets `AllowAllChats`, removes the policy, or points
-`WorkingDirectory` at sensitive data has chosen to accept that risk.
+The model gets no tools. Gemini CLI runs with `gemini-policies/deny-all-tools.toml` (`--policy`), which denies
+every built-in and MCP tool. agy runs with `antigravity-policies/deny-all-tools.json` (`--settings`),
+`--sandbox` and `--disable-slash-commands`. A message cannot make either CLI read files, run commands, browse
+or call MCP servers.
+
+The CLI also never runs inside the bot's own folder, where the token and the chat database live, and each user
+is rate limited (`MaxRequestsPerUserPerMinute`).
+
+Out of scope: if an operator sets `AllowAllChats`, removes the policy or points `WorkingDirectory` at sensitive
+data, that risk is theirs.
 
 ## Operator checklist
 
-- Keep the bot token out of `appsettings.json`. Use `dotnet user-secrets`
-  for development and environment variables in production.
+- Keep the bot token out of `appsettings.json`. Use `dotnet user-secrets` in development and environment
+  variables in production.
 - If a token was ever committed or shared, revoke it with @BotFather (`/revoke`).
-- Set `CliHome` so the bot does not inherit your personal `~/.gemini`
-  configuration (MCP servers, hooks, saved sessions). agy keeps conversations and
-  "knowledge" under the profile folder, so the Antigravity backend isolates them in `./agy-home`
-  by default. Do not set `CliHome: none` for agy: your personal memory would shape answers to
-  Telegram users, and bot conversations would land in your personal history.
-- Run `dotnet run --project TelegramGeminiBot -- doctor` after updating the CLI. agy updates itself.
-- Run the bot as a low-privilege OS account, not as SYSTEM or root.
+- Set `CliHome` so the bot does not pick up your personal `~/.gemini` setup (MCP servers, hooks, saved
+  sessions). agy stores conversations and "knowledge" in the profile folder, so the Antigravity backend puts
+  them in `./agy-home` by default. Leave it that way. With `CliHome: none`, your personal agy memory shapes
+  the answers Telegram users get, and their conversations show up in your history.
+- agy updates itself. Run `dotnet run --project TelegramGeminiBot -- doctor` after it does.
+- Run the bot under a low-privilege OS account, not SYSTEM or root.

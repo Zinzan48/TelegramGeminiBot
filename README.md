@@ -4,9 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > [!IMPORTANT]
-> **v0.2.0 has breaking changes.** The configuration format changed, and an empty `AllowedChatIds` now
-> means the bot answers nobody. Gemini CLI also stopped accepting personal Google sign-ins on 2026-06-18.
-> Before upgrading, read the [upgrade guide in CHANGELOG.md](CHANGELOG.md#upgrading-from-010).
+> v0.2.0 has breaking changes. The configuration format changed, and an empty `AllowedChatIds` now
+> means the bot answers nobody. Separately, Gemini CLI stopped accepting personal Google sign-ins on
+> 2026-06-18. Read the [upgrade guide](CHANGELOG.md#upgrading-from-010) before upgrading.
 
 A small .NET 10 worker that connects a Telegram bot to an AI command-line agent:
 [Gemini CLI](https://github.com/google-gemini/gemini-cli) or
@@ -22,22 +22,28 @@ so the bot remembers the conversation.
 |---|---|---|---|
 | `GeminiProfiles[].Backend` | `GeminiCli` | `Antigravity` | `Antigravity` |
 | Authentication | Paid Gemini API key, or Code Assist Standard/Enterprise | Your Google account (OS keyring) | Gemini API key + `AntigravityAuth: GeminiApiKey` |
-| Who may use the bot | Anyone you allow | **Only you**: one private chat | Anyone you allow |
+| Who may use the bot | Anyone you allow | Only you (one private chat) | Anyone you allow |
 | Quota | Your API billing | Your personal 5-hour/weekly Antigravity quota | Your API billing |
 | Install | `npm install -g @google/gemini-cli` (Node.js 20+) | Windows: `irm https://antigravity.google/cli/install.ps1 \| iex`<br>macOS/Linux: `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | same as account sign-in |
 
-**About the terms.** Personal Google sign-in for Gemini CLI ended on 2026-06-18
-([announcement](https://developers.googleblog.com/en/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)).
-For Antigravity, as we read it (based on a [forum answer](https://discuss.ai.google.dev/t/terms-clarification-personal-antigravity-cli-integration-with-a-multi-ai-orchestrator/187536),
-not the terms text), driving the official `agy` from your own scripts is fine, but letting anyone else use your
-account counts as account sharing. That is why the bot refuses to start in account mode unless `AllowedChatIds`
-holds exactly one private chat. To serve other people, use an API key. Check the current terms yourself
-before you deploy.
+### Terms
 
-Tested with agy 1.5.9 (2026-11-15). Asked to read a file holding a fake token, agy answered
-`Permission denied for read_file: Matches user-configured deny rule`. With the default `CliHome`, its sign-in
-kept working and the conversation stayed out of the personal agy history. agy updates itself, so run `doctor`
-after updates. The Gemini CLI backend has not been tested end-to-end in this release.
+Google ended personal sign-in for Gemini CLI on 2026-06-18
+([announcement](https://developers.googleblog.com/en/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)).
+
+For Antigravity, our reading comes from a
+[forum answer](https://discuss.ai.google.dev/t/terms-clarification-personal-antigravity-cli-integration-with-a-multi-ai-orchestrator/187536),
+not from the terms themselves: running the official `agy` from your own scripts is allowed, and letting anyone
+else use your account counts as account sharing. So in account mode the bot will not start unless
+`AllowedChatIds` holds exactly one private chat. Use an API key if other people need the bot, and check the
+current terms before you deploy.
+
+### What has been tested
+
+agy 1.5.9, on 2026-11-15. Asked to read a file containing a fake token, it replied
+`Permission denied for read_file: Matches user-configured deny rule`. With the default `CliHome` the sign-in
+kept working and the conversation did not appear in the personal agy history. agy updates itself, so run
+`doctor` after an update. The Gemini CLI backend was not tested end to end for this release.
 
 ## Quick start
 
@@ -67,8 +73,8 @@ When you message the bot, it logs `Ignored message from chat <id>`. Put that ID 
 dotnet user-secrets --project TelegramGeminiBot set "BotProfiles:0:AllowedChatIds:0" "<your-chat-id>"
 ```
 
-At startup, the bot checks the configured CLI. If the CLI is missing or too old, the bot stops and logs the
-exact command to fix it, so it never fails silently on the first message.
+The bot checks the configured CLI when it starts. If the CLI is missing or too old, it stops right away and
+logs the command that fixes it.
 
 In production, use environment variables. `__` separates sections and array indexes:
 
@@ -88,9 +94,9 @@ All settings live in `TelegramGeminiBot/appsettings.json`. That file is a templa
 | Key | Default | Description |
 |---|---|---|
 | `Name` | `Main` | Profile chosen by `ActiveProfiles:Bot`. One active profile per process. |
-| `Token` | — | Bot token. Use user-secrets or environment variables. |
+| `Token` | unset | Bot token. Use user-secrets or environment variables. |
 | `Username` | value from Telegram | Bot username without `@`, used for group mentions. |
-| `AllowedChatIds` | `[]` | Chats the bot answers. Empty means **none**. |
+| `AllowedChatIds` | `[]` | Chats the bot answers. Empty means none. |
 | `AllowAllChats` | `false` | Answer every chat. Anyone who finds the bot can spend your quota. Not allowed with agy account sign-in. |
 | `GroupMentionRequired` | `true` | In groups, answer only when mentioned or addressed by `/cmd@bot`. |
 | `MaxRequestsPerUserPerMinute` | `10` | Per-user rate limit. `0` disables it. |
@@ -103,11 +109,11 @@ All settings live in `TelegramGeminiBot/appsettings.json`. That file is a templa
 | `Name` | `Default` / `Antigravity` | Profile chosen by `ActiveProfiles:Gemini`. |
 | `Backend` | `GeminiCli` | `GeminiCli` or `Antigravity`. |
 | `AntigravityAuth` | `Account` | `Account` (owner-only) or `GeminiApiKey`. Used only by the Antigravity backend. |
-| `GeminiApiKey` | — | Passed as `GEMINI_API_KEY`. Use user-secrets or environment variables. |
+| `GeminiApiKey` | unset | Passed as `GEMINI_API_KEY`. Use user-secrets or environment variables. |
 | `ExecutablePath` | `gemini` / `agy` | Looked up on PATH. On Windows `gemini` also finds `gemini.cmd`. |
 | `Model` | CLI default | Passed as `--model`. |
 | `WorkingDirectory` | `./gemini-workspace` | Where the CLI runs. Must not contain the bot's own files. |
-| `CliHome` | `./agy-home` for agy, none for Gemini CLI | Separate state folder so the bot does not share your personal CLI configuration, memory, MCP servers or history. `none` disables it. For agy, the account sign-in still works because it lives in the OS keyring. |
+| `CliHome` | `./agy-home` for agy, unset for Gemini CLI | Separate state folder, so the bot does not use your personal CLI configuration, memory, MCP servers or history. `none` turns it off. agy's account sign-in is kept in the OS keyring and keeps working. |
 | `PolicyPath` | per backend | Deny-all tool policy (`--policy` for Gemini CLI, `--settings` for agy). `none` disables it (not recommended). |
 | `PromptTimeoutSeconds` | `120` | The CLI is killed after this long. |
 | `MaxConcurrentProcesses` | `2` | CLI processes at once across all chats. Always 1 for agy account sign-in. |
@@ -121,11 +127,11 @@ All settings live in `TelegramGeminiBot/appsettings.json`. That file is a templa
 
 ## Security
 
-Telegram users are untrusted input to an AI agent running on your machine. The defaults lock this down: a
-fail-closed allow-list, deny-all tool policies, an isolated working directory and a rate limit.
-See [SECURITY.md](SECURITY.md) for the threat model and how to report a vulnerability.
+Whatever Telegram users type becomes input to an AI agent on your machine. By default the bot answers only
+allow-listed chats, the CLI gets no tools, it runs in its own working directory and each user is rate limited.
+[SECURITY.md](SECURITY.md) has the threat model and explains how to report a vulnerability.
 
-All members of a group share that group's conversation history.
+Everyone in a group chat shares that group's conversation history.
 
 ## Development
 

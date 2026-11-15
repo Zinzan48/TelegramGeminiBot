@@ -98,9 +98,8 @@ public sealed class Worker : BackgroundService
             {
                 offset = update.Id + 1;
 
-                // Handle each update in the background so a slow Gemini call in one chat does not
-                // block every other chat. ChatQueue keeps each chat serialized and the CLI runner
-                // caps the number of concurrent CLI processes.
+                // Run in the background so one slow chat doesn't hold up the rest. ChatQueue keeps
+                // each chat in order; the runner caps how many CLI processes run at once.
                 var task = HandleUpdateSafeAsync(update, stoppingToken);
                 _inFlight.TryAdd(task, 0);
                 _ = task.ContinueWith(t => _inFlight.TryRemove(t, out _), TaskScheduler.Default);
@@ -118,7 +117,6 @@ public sealed class Worker : BackgroundService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Shutting down.
         }
         catch (Exception ex)
         {
@@ -139,7 +137,7 @@ public sealed class Worker : BackgroundService
             return;
         }
 
-        // Do not log message content: it is user data.
+        // Message text is user data, so only its length goes to the log.
         _logger.LogDebug("Received message (length {Length}) from user {UserId} in {ChatType} {ChatId}.",
             text.Length, message.From?.Id, message.Chat.Type, message.Chat.Id);
 
@@ -169,7 +167,7 @@ public sealed class Worker : BackgroundService
             return;
         }
 
-        // History is grouped per chat (private, group or supergroup), not per user.
+        // History is kept per chat, so everyone in a group shares one history.
         var chatId = message.Chat.Id;
 
         using var gate = await _chatQueue.AcquireAsync(chatId, cancellationToken);
@@ -190,13 +188,13 @@ public sealed class Worker : BackgroundService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Details (including sign-in instructions) stay in the log; users only see a generic message.
+            // The exception (which may include sign-in instructions) is for the operator's log only.
             _logger.LogError(ex, "AI CLI error for chat {ChatId}.", chatId);
             await _botClient.SendMessage(message.Chat, "Something went wrong while asking the AI. Please try again later.", cancellationToken: cancellationToken);
             return;
         }
 
-        // Send first: if delivery fails, the exchange is not stored as if the user had seen it.
+        // Save the exchange only after Telegram accepted the reply.
         foreach (var chunk in TelegramMessageSplitter.Split(response))
         {
             await _botClient.SendMessage(message.Chat, chunk, cancellationToken: cancellationToken);

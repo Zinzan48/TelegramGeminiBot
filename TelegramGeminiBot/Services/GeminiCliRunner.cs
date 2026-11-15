@@ -46,7 +46,7 @@ public sealed class GeminiCliRunner : IAiCliRunner, IDisposable
                 startInfo.Environment["GEMINI_API_KEY"] = _options.GeminiApiKey;
             }
 
-            // Never log the prompt itself: it contains users' messages and chat history.
+            // The prompt holds user messages and chat history; log its length only.
             _logger.LogInformation("Starting Gemini CLI: {Args} (prompt length {Length})",
                 string.Join(' ', BuildArguments(promptArgument: null)), prompt.Length);
 

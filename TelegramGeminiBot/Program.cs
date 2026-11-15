@@ -5,7 +5,6 @@ using TelegramGeminiBot.Configuration;
 using TelegramGeminiBot.Services;
 using TelegramGeminiBot.Storage;
 
-// `doctor [--install]` checks prerequisites without starting the bot.
 var isDoctor = args.Length > 0 && string.Equals(args[0], "doctor", StringComparison.OrdinalIgnoreCase);
 var doctorInstall = isDoctor && args.Skip(1).Any(a => string.Equals(a, "--install", StringComparison.OrdinalIgnoreCase));
 var hostArgs = isDoctor ? args.Skip(1).Where(a => !string.Equals(a, "--install", StringComparison.OrdinalIgnoreCase)).ToArray() : args;
@@ -68,7 +67,7 @@ else
     builder.Services.AddSingleton<IAiCliRunner, GeminiCliRunner>();
 }
 
-// Registered first so it finishes (or stops the host) before Worker starts polling Telegram.
+// Hosted services start in registration order, so the preflight check runs before Worker polls Telegram.
 builder.Services.AddHostedService<PreflightHostedService>();
 builder.Services.AddHostedService<Worker>();
 

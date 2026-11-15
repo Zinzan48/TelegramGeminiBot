@@ -27,8 +27,7 @@ public class BotOptions
     public long[] AllowedChatIds { get; set; } = [];
 
     /// <summary>
-    /// Explicit opt-in to answer every Telegram user. Anyone who finds the bot can then
-    /// spend your Gemini quota, so keep this false unless you really mean it.
+    /// Answer every Telegram user. Anyone who finds the bot can then spend your quota.
     /// </summary>
     public bool AllowAllChats { get; set; }
 

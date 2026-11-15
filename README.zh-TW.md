@@ -1,14 +1,13 @@
 # TelegramGeminiBot（繁體中文）
 
 > [!IMPORTANT]
-> **v0.2.0 有破壞性變更**：設定格式改了，`AllowedChatIds` 留空現在代表不回應任何人。
-> 另外，Gemini CLI 從 2026-06-18 起已不接受個人 Google 帳號登入。
-> 升級前請先看 [CHANGELOG 的升級指南](CHANGELOG.md#upgrading-from-010)。
+> v0.2.0 改了設定格式，`AllowedChatIds` 留空現在代表誰都不回。Gemini CLI 也從 2026-06-18 起不再接受
+> 個人 Google 帳號登入。升級前先看 [CHANGELOG 的升級指南](CHANGELOG.md#upgrading-from-010)。
 
-這是一個 .NET 10 Worker 服務，負責把 Telegram bot 接到 AI 命令列 agent。可以選
-[Gemini CLI](https://github.com/google-gemini/gemini-cli)，或
-[Antigravity CLI（`agy`）](https://antigravity.google/docs/getting-started)。每則訊息會用 headless 模式交給 CLI 處理，
-回覆傳回 Telegram。每個聊天室最近的對話存在 SQLite 裡，所以 bot 記得前後文。
+用 .NET 10 寫的小服務，把 Telegram bot 接到 AI 命令列工具上，可以選
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) 或
+[Antigravity CLI（`agy`）](https://antigravity.google/docs/getting-started)。收到訊息就丟給 CLI 跑 headless 模式，
+答案再傳回 Telegram。每個聊天室最近的對話存在 SQLite，bot 才接得上前文。
 
 [English](README.md)
 
@@ -18,22 +17,24 @@
 |---|---|---|---|
 | `GeminiProfiles[].Backend` | `GeminiCli` | `Antigravity` | `Antigravity` |
 | 驗證方式 | 付費 Gemini API key，或 Code Assist Standard／Enterprise | 你的 Google 帳號（存在系統 keyring） | Gemini API key，並設 `AntigravityAuth: GeminiApiKey` |
-| 誰能用這個 bot | 你允許的人 | **只有你自己**，限一個私聊 | 你允許的人 |
+| 誰能用這個 bot | 你允許的人 | 只有你自己（限一個私聊） | 你允許的人 |
 | 額度 | 你的 API 帳單 | 你個人的 Antigravity 額度（每 5 小時／每週） | 你的 API 帳單 |
 | 安裝 | `npm install -g @google/gemini-cli`（需要 Node.js 20 以上） | Windows：`irm https://antigravity.google/cli/install.ps1 \| iex`<br>macOS／Linux：`curl -fsSL https://antigravity.google/cli/install.sh \| bash` | 同左 |
 
-**關於條款**：Gemini CLI 的個人 Google 登入已在 2026-06-18 停止服務
+### 條款
+
+Gemini CLI 的個人 Google 登入在 2026-06-18 停了
 （[官方公告](https://developers.googleblog.com/en/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)）。
-Antigravity 的部分，依我們的理解（根據一則[論壇回覆](https://discuss.ai.google.dev/t/terms-clarification-personal-antigravity-cli-integration-with-a-multi-ai-orchestrator/187536)，
-不是條款原文），用自己的程式呼叫官方的 `agy` 沒有問題；但讓其他人使用你的帳號，就算帳號共用。
-所以在帳號登入模式下，`AllowedChatIds` 必須剛好是一個私聊，否則 bot 不會啟動。要給別人用的話，請改用 API key。
-部署前請自行確認最新條款。
 
-實測環境是 agy 1.5.9（2026-11-15）：
-- 要求讀取一個含假 token 的檔案，agy 回覆 `Permission denied for read_file: Matches user-configured deny rule`。
-- 使用預設的 `CliHome` 時，登入依然有效，對話也不會寫進你個人的 agy 紀錄。
+Antigravity 這邊，我們的判斷依據是一則[論壇回覆](https://discuss.ai.google.dev/t/terms-clarification-personal-antigravity-cli-integration-with-a-multi-ai-orchestrator/187536)，
+不是條款原文：自己寫程式去呼叫官方 `agy` 可以，讓別人用你的帳號就算帳號共用。所以帳號登入模式下，
+`AllowedChatIds` 一定要剛好一個私聊，bot 才會啟動。要給別人用就改用 API key。部署前請自己再看一次最新條款。
 
-agy 會自動更新，更新後請重跑一次 `doctor`。Gemini CLI 後端這個版本沒有做端到端實測。
+### 測過什麼
+
+2026-11-15 用 agy 1.5.9 測過：叫它讀一個放了假 token 的檔案，它回 `Permission denied for read_file: Matches user-configured deny rule`；
+用預設的 `CliHome` 時登入照常可用，對話也沒有跑進個人的 agy 紀錄。agy 會自己更新，更新後重跑一次 `doctor`。
+Gemini CLI 後端這一版沒有做端到端測試。
 
 ## 快速開始
 
@@ -63,7 +64,7 @@ dotnet run --project TelegramGeminiBot
 dotnet user-secrets --project TelegramGeminiBot set "BotProfiles:0:AllowedChatIds:0" "<你的 chat id>"
 ```
 
-bot 啟動時會先檢查設定的 CLI。沒有安裝或版本太舊，會直接停止，並在 log 印出修正用的指令，不會等到第一則訊息才出錯。
+bot 一啟動就會檢查設定的 CLI。沒裝或版本太舊會直接停下來，log 裡附上修正用的指令。
 
 正式環境請改用環境變數，層級和陣列索引都用 `__` 分隔：
 
@@ -76,24 +77,22 @@ $env:DOTNET_ENVIRONMENT = "Production"
 
 ## 設定
 
-所有設定都在 `TelegramGeminiBot/appsettings.json`，各欄位說明請見[英文 README 的 Configuration 表格](README.md#configuration)。
-這個檔案只是範本，請不要把秘密值寫進去。幾個重點：
+設定都在 `TelegramGeminiBot/appsettings.json`，每個欄位的說明見[英文 README 的 Configuration 表格](README.md#configuration)。
+這個檔案是範本，秘密值不要寫進去。比較需要注意的幾個：
 
-- `AllowedChatIds` 留空代表**不回應任何人**。`AllowAllChats: true` 會開放給所有人，但 agy 帳號登入模式不允許這樣設。
-- `CliHome` 讓 bot 使用獨立的 CLI 狀態資料夾，不會共用你個人的設定、記憶、MCP server 和對話紀錄。
-  - agy 後端預設是 `./agy-home`。登入資訊存在系統 keyring，所以隔離之後依然有效。
-  - Gemini CLI 後端預設不隔離。
-  - 設成 `none` 可以關閉隔離。
-  - 實作上，Gemini CLI 是透過 `GEMINI_CLI_HOME`，agy 則是透過 `USERPROFILE`／`HOME`。
-- `PolicyPath` 預設會封鎖所有工具，模型只能回文字。Gemini CLI 透過 `--policy` 傳入，agy 透過 `--settings`。
-- `WorkingDirectory` 不可以指向含有 bot 自身檔案的資料夾，啟動時會檢查。
+- `AllowedChatIds` 留空就誰都不回。`AllowAllChats: true` 會開放給所有人，agy 帳號登入模式不能這樣設。
+- `CliHome` 是 CLI 專用的狀態資料夾，讓 bot 不去用你個人的設定、記憶、MCP server 和對話紀錄。
+  agy 後端預設 `./agy-home`，登入資訊存在系統 keyring，換資料夾後照樣可以用。Gemini CLI 後端預設不隔離，
+  設成 `none` 則關掉。底層做法是：Gemini CLI 設 `GEMINI_CLI_HOME`，agy 設 `USERPROFILE`／`HOME`。
+- `PolicyPath` 預設擋掉所有工具，模型只能回文字。Gemini CLI 用 `--policy` 帶入，agy 用 `--settings`。
+- `WorkingDirectory` 不能指到放 bot 自己檔案的資料夾，啟動時會檢查。
 
 ## 安全性
 
-Telegram 使用者對跑在你機器上的 AI agent 來說是不受信任的輸入。預設值已經收緊：白名單採 fail-closed、
-所有工具一律拒絕、工作目錄獨立、每個使用者都有限流。威脅模型和回報管道請見 [SECURITY.md](SECURITY.md)。
+Telegram 上任何人打的字，最後都會變成你機器上 AI agent 的輸入。所以預設只回白名單裡的聊天室，CLI 拿不到任何工具，
+在獨立的工作目錄執行，每個人也有次數限制。威脅模型和回報方式寫在 [SECURITY.md](SECURITY.md)。
 
-在群組裡，所有成員共用同一份對話歷史。
+群組裡的成員共用同一份對話紀錄。
 
 ## 開發
 

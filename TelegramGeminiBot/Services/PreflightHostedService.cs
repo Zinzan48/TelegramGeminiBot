@@ -4,8 +4,8 @@ using TelegramGeminiBot.Configuration;
 namespace TelegramGeminiBot.Services;
 
 /// <summary>
-/// Runs before <see cref="Worker"/>: stops the host with install/fix instructions when the
-/// configured AI CLI is missing or unusable, instead of failing on the first Telegram message.
+/// Runs before <see cref="Worker"/>. Stops the host and logs install or fix instructions when the
+/// configured AI CLI is missing or unusable.
 /// </summary>
 public sealed class PreflightHostedService(IOptions<GeminiOptions> options, ILogger<PreflightHostedService> logger) : IHostedService
 {

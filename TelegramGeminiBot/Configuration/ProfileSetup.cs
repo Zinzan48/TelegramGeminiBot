@@ -118,8 +118,8 @@ public static class ProfileSetup
         }
         else if (string.IsNullOrWhiteSpace(gemini.CliHome) && gemini.Backend == AiBackend.Antigravity)
         {
-            // Verified with agy 1.5.9: a separate USERPROFILE/HOME keeps the keyring sign-in working
-            // while keeping bot conversations and "knowledge" out of the owner's personal agy state.
+            // Keeps bot conversations and agy "knowledge" out of the owner's profile. The keyring
+            // sign-in still works with a different USERPROFILE/HOME (checked with agy 1.5.9).
             gemini.CliHome = Path.Combine(contentRoot, "agy-home");
         }
 
