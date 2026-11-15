@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/). While the version is 0.x, the configuration format may still change.
 
+## [0.2.1] - 2026-11-15
+
+Dependency updates only. Configuration and behavior are the same as 0.2.0.
+
+### Changed
+
+- Telegram.Bot 22.8.1 → 22.10.4. This is the only update that ships in the release binaries. It was checked by the
+  build and the unit tests; the tests do not call the real Telegram API.
+- Test tooling: Microsoft.NET.Test.Sdk 17.14.1 → 18.12.0 (versions up to 18.11.0 are affected by an advisory),
+  coverlet.collector 6.0.4 → 10.1.0, xunit.runner.visualstudio 3.1.4 → 4.0.1.
+- Dependabot now opens version updates against `develop`, and they reach `master` together in patch releases like
+  this one. Major updates of `Microsoft.Extensions.*` and `Microsoft.Data.Sqlite` are ignored, so the project
+  stays on .NET 10 LTS.
+
 ## [0.2.0] - 2026-11-15
 
 > Upgrading from 0.1.0? Read the [upgrade guide](#upgrading-from-010) first. A 0.1.0 configuration
@@ -109,5 +123,6 @@ keyring sign-in kept working with the separate `CliHome`.
 First version: forwards Telegram messages to Gemini CLI (personal Google sign-in) and keeps per-chat history in
 SQLite. It stopped working on 2026-06-18, when Google ended that sign-in.
 
+[0.2.1]: https://github.com/Zinzan48/TelegramGeminiBot/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Zinzan48/TelegramGeminiBot/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Zinzan48/TelegramGeminiBot/releases/tag/v0.1.0
