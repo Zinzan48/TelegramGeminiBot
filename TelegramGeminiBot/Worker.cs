@@ -51,7 +51,11 @@ public sealed class Worker : BackgroundService
             _logger.LogWarning("Bot username is not available; group mention checks will fail.");
         }
 
-        _logger.LogInformation("Bot connected as {Username} ({Id}).", me.Username, me.Id);
+        _logger.LogInformation("Bot connected as @{Username} (ID: {Id}).", me.Username, me.Id);
+        _logger.LogInformation("Configuration: GroupMentionRequired={MentionRequired}, AllowedChatIds=[{ChatIds}], AllowedUpdates=[{Updates}]",
+            _botOptions.GroupMentionRequired,
+            string.Join(", ", _botOptions.AllowedChatIds),
+            string.Join(", ", _allowedUpdates));
 
         int? offset = null;
 
@@ -113,6 +117,15 @@ public sealed class Worker : BackgroundService
             return;
         }
 
+        // Log incoming message info for debugging
+        _logger.LogDebug(
+            "Received message from {Username} (UserID: {UserId}) in {ChatType} {ChatId}: {Text}",
+            message.From?.Username ?? "unknown",
+            message.From?.Id,
+            message.Chat.Type,
+            message.Chat.Id,
+            text.Length > 50 ? text[..50] + "..." : text);
+
         if (!ShouldProcessMessage(message, text))
         {
             return;
@@ -125,9 +138,12 @@ public sealed class Worker : BackgroundService
             return;
         }
 
-        using var gate = await _chatQueue.AcquireAsync(message.Chat.Id, cancellationToken);
+        // Use chat.Id (covers private, group, supergroup, channel). UserId is not used for grouping history.
+        var chatId = message.Chat.Id;
 
-        var history = await _historyStore.GetRecentMessagesAsync(message.Chat.Id, _historyOptions.MaxMessages, cancellationToken);
+        using var gate = await _chatQueue.AcquireAsync(chatId, cancellationToken);
+
+        var history = await _historyStore.GetRecentMessagesAsync(chatId, _historyOptions.MaxMessages, cancellationToken);
         var prompt = PromptBuilder.BuildPrompt(text, history);
 
         string response;
@@ -137,27 +153,34 @@ public sealed class Worker : BackgroundService
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Gemini CLI timed out for chat {ChatId}.", message.Chat.Id);
+            _logger.LogWarning("Gemini CLI timed out for chat {ChatId}.", chatId);
             await _botClient.SendMessage(message.Chat, "Gemini CLI timed out. Please try again.", cancellationToken: cancellationToken);
             return;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Gemini CLI error for chat {ChatId}.", message.Chat.Id);
+            _logger.LogError(ex, "Gemini CLI error for chat {ChatId}.", chatId);
             await _botClient.SendMessage(message.Chat, "Gemini CLI error. Please try again later.", cancellationToken: cancellationToken);
             return;
         }
 
         var now = DateTimeOffset.UtcNow;
-        await _historyStore.AddMessageAsync(message.Chat.Id, "User", text, now, cancellationToken);
-        await _historyStore.AddMessageAsync(message.Chat.Id, "Assistant", response, now, cancellationToken);
-        await _historyStore.TrimHistoryAsync(message.Chat.Id, _historyOptions.MaxMessages, cancellationToken);
+        await _historyStore.AddMessageAsync(chatId, "User", text, now, cancellationToken);
+        await _historyStore.AddMessageAsync(chatId, "Assistant", response, now, cancellationToken);
+        await _historyStore.TrimHistoryAsync(chatId, _historyOptions.MaxMessages, cancellationToken);
 
         await _botClient.SendMessage(message.Chat, response, cancellationToken: cancellationToken);
     }
 
     private bool ShouldProcessMessage(Message message, string text)
     {
+        // Check if chat is in allowed list (if configured)
+        if (_botOptions.AllowedChatIds.Length > 0 &&
+            !_botOptions.AllowedChatIds.Contains(message.Chat.Id))
+        {
+            return false;
+        }
+
         if (message.Chat.Type == ChatType.Private)
         {
             return true;

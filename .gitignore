@@ -361,3 +361,14 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# --- TelegramGeminiBot local data & secrets ---
+# Chat history database (contains user messages)
+TelegramGeminiBot/data/
+*.db
+*.db-shm
+*.db-wal
+# Local-only configuration overrides
+appsettings.*.local.json
+appsettings.local.json
+# Tooling
+.serena/

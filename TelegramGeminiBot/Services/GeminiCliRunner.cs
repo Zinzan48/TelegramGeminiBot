@@ -38,6 +38,11 @@ public sealed class GeminiCliRunner
             StandardErrorEncoding = Encoding.UTF8
         };
 
+        if (!string.IsNullOrWhiteSpace(_options.WorkingDirectory))
+        {
+            startInfo.WorkingDirectory = _options.WorkingDirectory;
+        }
+
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
