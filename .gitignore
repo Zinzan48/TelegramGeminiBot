@@ -372,3 +372,5 @@ appsettings.*.local.json
 appsettings.local.json
 # Tooling
 .serena/
+# Default Gemini CLI working directory created at runtime
+TelegramGeminiBot/gemini-workspace/

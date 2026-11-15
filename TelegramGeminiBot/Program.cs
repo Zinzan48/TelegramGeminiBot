@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using TelegramGeminiBot;
@@ -7,50 +8,18 @@ using TelegramGeminiBot.Storage;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Load profiles
 var botProfiles = builder.Configuration.GetSection("BotProfiles").Get<BotProfile[]>() ?? [];
 var geminiProfiles = builder.Configuration.GetSection("GeminiProfiles").Get<GeminiProfile[]>() ?? [];
 
-// Support multiple active bot profiles (comma-separated)
-var activeBotProfileNames = builder.Configuration.GetValue<string>("ActiveProfiles:Bot") ?? string.Empty;
-var activeGeminiProfileName = builder.Configuration.GetValue<string>("ActiveProfiles:Gemini");
+var activeBot = ResolveProfile(botProfiles, builder.Configuration.GetValue<string>("ActiveProfiles:Bot"));
+var activeGemini = ResolveProfile(geminiProfiles, builder.Configuration.GetValue<string>("ActiveProfiles:Gemini"));
 
-var activeBots = ResolveBotProfiles(botProfiles, activeBotProfileNames);
-var activeGemini = ResolveProfile(geminiProfiles, activeGeminiProfileName);
+ValidateProfile(activeBot);
+ValidateProfile(activeGemini);
+PrepareGeminiPaths(activeGemini, builder.Environment.ContentRootPath);
 
-// Merge multiple bot profiles into BotOptions
-builder.Services.Configure<BotOptions>(opts =>
-{
-    // Use first profile's token and username as primary
-    var primary = activeBots[0];
-    opts.Token = primary.Token;
-    opts.Username = primary.Username;
-    
-    // Merge AllowedUpdates from all profiles
-    opts.AllowedUpdates = activeBots
-        .SelectMany(p => p.AllowedUpdates)
-        .Distinct()
-        .ToArray();
-    
-    // GroupMentionRequired: true only if ALL profiles require it
-    opts.GroupMentionRequired = activeBots.All(p => p.GroupMentionRequired);
-    
-    // Merge AllowedChatIds from all profiles
-    opts.AllowedChatIds = activeBots
-        .SelectMany(p => p.AllowedChatIds)
-        .Distinct()
-        .ToArray();
-});
-
-builder.Services.Configure<GeminiOptions>(opts =>
-{
-    opts.ExecutablePath = activeGemini.ExecutablePath;
-    opts.Model = activeGemini.Model;
-    opts.UseHeadless = activeGemini.UseHeadless;
-    opts.PromptTimeoutSeconds = activeGemini.PromptTimeoutSeconds;
-    opts.OutputFormat = activeGemini.OutputFormat;
-    opts.WorkingDirectory = activeGemini.WorkingDirectory;
-});
+builder.Services.AddSingleton<IOptions<BotOptions>>(Options.Create<BotOptions>(activeBot));
+builder.Services.AddSingleton<IOptions<GeminiOptions>>(Options.Create<GeminiOptions>(activeGemini));
 
 builder.Services.AddOptions<ChatHistoryOptions>()
     .Bind(builder.Configuration.GetSection(OptionsRegistration.ChatHistorySection))
@@ -69,6 +38,11 @@ builder.Services.AddSingleton(sp =>
     return new ChatHistoryStore(options.DatabasePath);
 });
 
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(sp => new UserRateLimiter(
+    sp.GetRequiredService<IOptions<BotOptions>>().Value.MaxRequestsPerUserPerMinute,
+    TimeSpan.FromMinutes(1),
+    sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<ChatQueue>();
 builder.Services.AddSingleton<GeminiCliRunner>();
 builder.Services.AddHostedService<Worker>();
@@ -76,56 +50,78 @@ builder.Services.AddHostedService<Worker>();
 var host = builder.Build();
 host.Run();
 
-static TProfile ResolveProfile<TProfile>(IEnumerable<TProfile> profiles, string? requestedName) where TProfile : class
+static TProfile ResolveProfile<TProfile>(TProfile[] profiles, string? requestedName) where TProfile : INamedProfile
 {
-    if (!profiles.Any())
-    {
-        throw new InvalidOperationException($"No {typeof(TProfile).Name} entries found in configuration.");
-    }
-
-    if (!string.IsNullOrWhiteSpace(requestedName))
-    {
-        var match = profiles.FirstOrDefault(p =>
-            string.Equals((p as dynamic).Name, requestedName, StringComparison.OrdinalIgnoreCase));
-        if (match is not null)
-        {
-            return match;
-        }
-
-        throw new InvalidOperationException($"Active profile '{requestedName}' not found for {typeof(TProfile).Name}. Available: {string.Join(", ", profiles.Select(p => (p as dynamic).Name))}");
-    }
-
-    return profiles.First();
-}
-
-static List<BotProfile> ResolveBotProfiles(BotProfile[] profiles, string profileNames)
-{
+    var kind = typeof(TProfile).Name;
     if (profiles.Length == 0)
     {
-        throw new InvalidOperationException("No BotProfile entries found in configuration.");
+        throw new InvalidOperationException($"No {kind} entries found in configuration.");
     }
 
-    if (string.IsNullOrWhiteSpace(profileNames))
+    if (string.IsNullOrWhiteSpace(requestedName))
     {
-        return [profiles.First()];
+        return profiles[0];
     }
 
-    var names = profileNames.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    var result = new List<BotProfile>();
-
-    foreach (var name in names)
+    if (requestedName.Contains(','))
     {
-        var match = profiles.FirstOrDefault(p =>
-            string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
-        
-        if (match is null)
+        throw new InvalidOperationException(
+            $"Only one active {kind} is supported, but ActiveProfiles lists '{requestedName}'. Run one bot instance per token.");
+    }
+
+    return profiles.FirstOrDefault(p => string.Equals(p.Name, requestedName.Trim(), StringComparison.OrdinalIgnoreCase))
+        ?? throw new InvalidOperationException(
+            $"Active profile '{requestedName}' not found for {kind}. Available: {string.Join(", ", profiles.Select(p => p.Name))}");
+}
+
+static void ValidateProfile(object profile)
+{
+    var results = new List<ValidationResult>();
+    if (!Validator.TryValidateObject(profile, new ValidationContext(profile), results, validateAllProperties: true))
+    {
+        throw new InvalidOperationException(
+            $"Invalid {profile.GetType().Name}: {string.Join("; ", results.Select(r => r.ErrorMessage))}");
+    }
+}
+
+static void PrepareGeminiPaths(GeminiOptions gemini, string contentRoot)
+{
+    // The CLI must never run inside the bot's own folder: that folder holds the bot token
+    // (appsettings / secrets) and every chat's history database.
+    var workingDirectory = string.IsNullOrWhiteSpace(gemini.WorkingDirectory)
+        ? Path.Combine(contentRoot, "gemini-workspace")
+        : Path.GetFullPath(gemini.WorkingDirectory, contentRoot);
+
+    if (IsSameOrParent(workingDirectory, contentRoot) || IsSameOrParent(workingDirectory, AppContext.BaseDirectory))
+    {
+        throw new InvalidOperationException(
+            $"Gemini WorkingDirectory '{workingDirectory}' contains the bot's own files. Point it to a dedicated empty directory.");
+    }
+
+    Directory.CreateDirectory(workingDirectory);
+    gemini.WorkingDirectory = workingDirectory;
+
+    if (!string.IsNullOrWhiteSpace(gemini.CliHome))
+    {
+        gemini.CliHome = Path.GetFullPath(gemini.CliHome, contentRoot);
+        Directory.CreateDirectory(gemini.CliHome);
+    }
+
+    if (!string.IsNullOrWhiteSpace(gemini.PolicyPath))
+    {
+        var policyPath = Path.GetFullPath(gemini.PolicyPath, AppContext.BaseDirectory);
+        if (!File.Exists(policyPath) && !Directory.Exists(policyPath))
         {
-            throw new InvalidOperationException(
-                $"Active profile '{name}' not found. Available: {string.Join(", ", profiles.Select(p => p.Name))}");
+            throw new InvalidOperationException($"Gemini PolicyPath '{policyPath}' does not exist.");
         }
-        
-        result.Add(match);
-    }
 
-    return result.Count == 0 ? [profiles.First()] : result;
+        gemini.PolicyPath = policyPath;
+    }
+}
+
+static bool IsSameOrParent(string candidate, string protectedPath)
+{
+    var a = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate)) + Path.DirectorySeparatorChar;
+    var b = Path.TrimEndingDirectorySeparator(Path.GetFullPath(protectedPath)) + Path.DirectorySeparatorChar;
+    return b.StartsWith(a, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 }

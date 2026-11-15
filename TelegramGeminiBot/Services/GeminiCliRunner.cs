@@ -5,15 +5,17 @@ using TelegramGeminiBot.Configuration;
 
 namespace TelegramGeminiBot.Services;
 
-public sealed class GeminiCliRunner
+public sealed class GeminiCliRunner : IDisposable
 {
     private readonly GeminiOptions _options;
     private readonly ILogger<GeminiCliRunner> _logger;
+    private readonly SemaphoreSlim _concurrency;
 
     public GeminiCliRunner(IOptions<GeminiOptions> options, ILogger<GeminiCliRunner> logger)
     {
         _options = options.Value;
         _logger = logger;
+        _concurrency = new SemaphoreSlim(_options.MaxConcurrentProcesses, _options.MaxConcurrentProcesses);
     }
 
     public async Task<string> RunAsync(string prompt, CancellationToken cancellationToken)
@@ -23,8 +25,21 @@ public sealed class GeminiCliRunner
             throw new ArgumentException("Prompt is required.", nameof(prompt));
         }
 
-        var arguments = BuildArguments(prompt);
+        await _concurrency.WaitAsync(cancellationToken);
+        try
+        {
+            return await RunProcessAsync(prompt, cancellationToken);
+        }
+        finally
+        {
+            _concurrency.Release();
+        }
+    }
 
+    public void Dispose() => _concurrency.Dispose();
+
+    private async Task<string> RunProcessAsync(string prompt, CancellationToken cancellationToken)
+    {
         var startInfo = new ProcessStartInfo
         {
             FileName = _options.ExecutablePath,
@@ -35,15 +50,16 @@ public sealed class GeminiCliRunner
             CreateNoWindow = true,
             StandardInputEncoding = Encoding.UTF8,
             StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
+            StandardErrorEncoding = Encoding.UTF8,
+            WorkingDirectory = _options.WorkingDirectory
         };
 
-        if (!string.IsNullOrWhiteSpace(_options.WorkingDirectory))
+        if (!string.IsNullOrWhiteSpace(_options.CliHome))
         {
-            startInfo.WorkingDirectory = _options.WorkingDirectory;
+            startInfo.Environment["GEMINI_CLI_HOME"] = _options.CliHome;
         }
 
-        foreach (var argument in arguments)
+        foreach (var argument in BuildArguments(includePrompt: !_options.UseHeadless ? prompt : null))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -52,28 +68,12 @@ public sealed class GeminiCliRunner
 
         var stdoutBuilder = new StringBuilder();
         var stderrBuilder = new StringBuilder();
+        process.OutputDataReceived += (_, args) => { if (args.Data is not null) stdoutBuilder.AppendLine(args.Data); };
+        process.ErrorDataReceived += (_, args) => { if (args.Data is not null) stderrBuilder.AppendLine(args.Data); };
 
-        process.OutputDataReceived += (_, args) =>
-        {
-            if (args.Data is null)
-            {
-                return;
-            }
-
-            stdoutBuilder.AppendLine(args.Data);
-        };
-
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (args.Data is null)
-            {
-                return;
-            }
-
-            stderrBuilder.AppendLine(args.Data);
-        };
-
-        _logger.LogInformation("Starting gemini CLI with args: {args}", string.Join(' ', arguments));
+        // Never log the prompt itself: it contains users' messages and chat history.
+        _logger.LogInformation("Starting Gemini CLI: {Args} (prompt length {Length})",
+            string.Join(' ', BuildArguments(includePrompt: null)), prompt.Length);
 
         if (!process.Start())
         {
@@ -132,7 +132,7 @@ public sealed class GeminiCliRunner
         return output;
     }
 
-    private IReadOnlyList<string> BuildArguments(string prompt)
+    private List<string> BuildArguments(string? includePrompt)
     {
         var args = new List<string>();
 
@@ -148,10 +148,16 @@ public sealed class GeminiCliRunner
             args.Add(_options.OutputFormat);
         }
 
-        if (!_options.UseHeadless)
+        if (!string.IsNullOrWhiteSpace(_options.PolicyPath))
+        {
+            args.Add("--policy");
+            args.Add(_options.PolicyPath);
+        }
+
+        if (includePrompt is not null)
         {
             args.Add("--prompt");
-            args.Add(prompt);
+            args.Add(includePrompt);
         }
 
         return args;

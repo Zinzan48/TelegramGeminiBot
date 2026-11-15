@@ -17,6 +17,7 @@ public sealed class Worker : BackgroundService
     private readonly ChatHistoryStore _historyStore;
     private readonly GeminiCliRunner _gemini;
     private readonly ChatQueue _chatQueue;
+    private readonly UserRateLimiter _rateLimiter;
     private string _botUsername = string.Empty;
     private UpdateType[] _allowedUpdates = [UpdateType.Message];
 
@@ -27,7 +28,8 @@ public sealed class Worker : BackgroundService
         IOptions<ChatHistoryOptions> historyOptions,
         ChatHistoryStore historyStore,
         GeminiCliRunner gemini,
-        ChatQueue chatQueue)
+        ChatQueue chatQueue,
+        UserRateLimiter rateLimiter)
     {
         _botClient = botClient;
         _logger = logger;
@@ -36,13 +38,14 @@ public sealed class Worker : BackgroundService
         _historyStore = historyStore;
         _gemini = gemini;
         _chatQueue = chatQueue;
+        _rateLimiter = rateLimiter;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await _historyStore.InitializeAsync(stoppingToken);
 
-        var me = await _botClient.GetMe();
+        var me = await _botClient.GetMe(stoppingToken);
         _botUsername = NormalizeUsername(_botOptions.Username, me.Username);
         _allowedUpdates = BuildAllowedUpdates();
 
@@ -52,10 +55,22 @@ public sealed class Worker : BackgroundService
         }
 
         _logger.LogInformation("Bot connected as @{Username} (ID: {Id}).", me.Username, me.Id);
-        _logger.LogInformation("Configuration: GroupMentionRequired={MentionRequired}, AllowedChatIds=[{ChatIds}], AllowedUpdates=[{Updates}]",
+        _logger.LogInformation("Configuration: GroupMentionRequired={MentionRequired}, AllowedChatIds=[{ChatIds}], AllowAllChats={AllowAll}, AllowedUpdates=[{Updates}]",
             _botOptions.GroupMentionRequired,
             string.Join(", ", _botOptions.AllowedChatIds),
+            _botOptions.AllowAllChats,
             string.Join(", ", _allowedUpdates));
+
+        if (_botOptions.AllowedChatIds.Length == 0 && !_botOptions.AllowAllChats)
+        {
+            _logger.LogWarning(
+                "AllowedChatIds is empty and AllowAllChats is false: the bot will ignore every chat. " +
+                "Add your chat ID to AllowedChatIds (rejected chat IDs are logged at Information level).");
+        }
+        else if (_botOptions.AllowAllChats && _botOptions.AllowedChatIds.Length == 0)
+        {
+            _logger.LogWarning("AllowAllChats is true: any Telegram user can use this bot and your Gemini quota.");
+        }
 
         int? offset = null;
 
@@ -93,52 +108,54 @@ public sealed class Worker : BackgroundService
                 {
                     _logger.LogError(ex, "Failed to handle update {UpdateId}.", update.Id);
                 }
-
-                if (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
             }
         }
     }
 
     private async Task HandleUpdateAsync(Update update, CancellationToken cancellationToken)
     {
-        if (update.Message is null)
+        if (update.Message is not { } message)
         {
             return;
         }
 
-        var message = update.Message;
         var text = message.Text ?? message.Caption;
-
         if (string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
-        // Log incoming message info for debugging
-        _logger.LogDebug(
-            "Received message from {Username} (UserID: {UserId}) in {ChatType} {ChatId}: {Text}",
-            message.From?.Username ?? "unknown",
-            message.From?.Id,
-            message.Chat.Type,
-            message.Chat.Id,
-            text.Length > 50 ? text[..50] + "..." : text);
+        // Do not log message content: it is user data.
+        _logger.LogDebug("Received message (length {Length}) from user {UserId} in {ChatType} {ChatId}.",
+            text.Length, message.From?.Id, message.Chat.Type, message.Chat.Id);
 
-        if (!ShouldProcessMessage(message, text))
+        if (!MessageFilter.IsChatAllowed(message.Chat.Id, _botOptions))
+        {
+            _logger.LogInformation("Ignored message from chat {ChatId} ({ChatType}): not in AllowedChatIds.",
+                message.Chat.Id, message.Chat.Type);
+            return;
+        }
+
+        if (!MessageFilter.ShouldProcess(message, text, _botUsername, _botOptions))
         {
             return;
         }
 
-        text = NormalizeMessageText(text, message);
-
+        text = MessageFilter.Normalize(text, message, _botUsername);
         if (string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
-        // Use chat.Id (covers private, group, supergroup, channel). UserId is not used for grouping history.
+        var userId = message.From?.Id ?? message.Chat.Id;
+        if (!_rateLimiter.TryAcquire(userId))
+        {
+            _logger.LogInformation("Rate limit hit for user {UserId} in chat {ChatId}.", userId, message.Chat.Id);
+            await _botClient.SendMessage(message.Chat, "Too many requests. Please wait a minute and try again.", cancellationToken: cancellationToken);
+            return;
+        }
+
+        // History is grouped per chat (private, group or supergroup), not per user.
         var chatId = message.Chat.Id;
 
         using var gate = await _chatQueue.AcquireAsync(chatId, cancellationToken);
@@ -157,7 +174,7 @@ public sealed class Worker : BackgroundService
             await _botClient.SendMessage(message.Chat, "Gemini CLI timed out. Please try again.", cancellationToken: cancellationToken);
             return;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Gemini CLI error for chat {ChatId}.", chatId);
             await _botClient.SendMessage(message.Chat, "Gemini CLI error. Please try again later.", cancellationToken: cancellationToken);
@@ -172,98 +189,8 @@ public sealed class Worker : BackgroundService
         await _botClient.SendMessage(message.Chat, response, cancellationToken: cancellationToken);
     }
 
-    private bool ShouldProcessMessage(Message message, string text)
-    {
-        // Check if chat is in allowed list (if configured)
-        if (_botOptions.AllowedChatIds.Length > 0 &&
-            !_botOptions.AllowedChatIds.Contains(message.Chat.Id))
-        {
-            return false;
-        }
-
-        if (message.Chat.Type == ChatType.Private)
-        {
-            return true;
-        }
-
-        if (!_botOptions.GroupMentionRequired)
-        {
-            return true;
-        }
-
-        if (string.IsNullOrWhiteSpace(_botUsername))
-        {
-            return false;
-        }
-
-        var mention = "@" + _botUsername;
-
-        if (text.Contains(mention, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        var entities = message.Entities ?? message.CaptionEntities;
-        if (entities is null)
-        {
-            return false;
-        }
-
-        foreach (var entity in entities)
-        {
-            if (entity.Type == MessageEntityType.Mention)
-            {
-                var value = SafeSubstring(text, entity.Offset, entity.Length);
-                if (string.Equals(value, mention, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-            else if (entity.Type == MessageEntityType.BotCommand)
-            {
-                var value = SafeSubstring(text, entity.Offset, entity.Length);
-                if (value.Contains(mention, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private string NormalizeMessageText(string text, Message message)
-    {
-        var normalized = text;
-        var entities = message.Entities ?? message.CaptionEntities;
-
-        if (entities is not null)
-        {
-            foreach (var entity in entities)
-            {
-                if (entity.Type == MessageEntityType.BotCommand && entity.Offset == 0)
-                {
-                    normalized = SafeSubstring(normalized, entity.Length, normalized.Length - entity.Length).Trim();
-                    break;
-                }
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(_botUsername))
-        {
-            normalized = normalized.Replace("@" + _botUsername, string.Empty, StringComparison.OrdinalIgnoreCase);
-        }
-
-        return normalized.Trim();
-    }
-
     private UpdateType[] BuildAllowedUpdates()
     {
-        if (_botOptions.AllowedUpdates.Length == 0)
-        {
-            return [UpdateType.Message];
-        }
-
         var updates = new List<UpdateType>();
         foreach (var raw in _botOptions.AllowedUpdates)
         {
@@ -288,16 +215,5 @@ public sealed class Worker : BackgroundService
         }
 
         return string.IsNullOrWhiteSpace(actual) ? string.Empty : actual.TrimStart('@');
-    }
-
-    private static string SafeSubstring(string text, int offset, int length)
-    {
-        if (offset < 0 || length <= 0 || offset >= text.Length)
-        {
-            return string.Empty;
-        }
-
-        var safeLength = Math.Min(length, text.Length - offset);
-        return text.Substring(offset, safeLength);
     }
 }
