@@ -79,7 +79,7 @@ public static class Doctor
 
     private static async Task<PreflightCheck> CheckNodeAsync(CancellationToken cancellationToken)
     {
-        const string fix = "Install Node.js 20 or later from https://nodejs.org, then open a new terminal.";
+        const string fix = "Install a current Node.js LTS (24 or 26) from https://nodejs.org, then open a new terminal.";
         var node = CliPreflight.ResolveExecutable("node", Environment.GetEnvironmentVariable("PATH"),
             Environment.GetEnvironmentVariable("PATHEXT"), OperatingSystem.IsWindows());
         if (node is null)
@@ -93,9 +93,15 @@ public static class Doctor
             startInfo.ArgumentList.Add("--version");
             var result = await CliProcess.RunAsync(startInfo, null, TimeSpan.FromSeconds(10), cancellationToken);
             var text = result.StandardOutput.Trim();
-            return Version.TryParse(text.TrimStart('v'), out var version) && version.Major >= 20
-                ? new("Node.js 20+", CheckStatus.Ok, text)
-                : new("Node.js 20+", CheckStatus.Error, $"Found {text}.", fix);
+            if (!Version.TryParse(text.TrimStart('v'), out var version) || version.Major < 20)
+            {
+                return new("Node.js 20+", CheckStatus.Error, $"Found {text}; Gemini CLI needs 20 or later.", fix);
+            }
+
+            // Gemini CLI still accepts Node 20, but Node 20 reached end of life on 2026-04-30.
+            return version.Major < 22
+                ? new("Node.js 20+", CheckStatus.Warning, $"{text} works but no longer gets security updates.", fix)
+                : new("Node.js 20+", CheckStatus.Ok, text);
         }
         catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {

@@ -15,6 +15,8 @@ Gemini CLI now needs a paid Gemini API key or a Gemini Code Assist Standard/Ente
 This release adds Antigravity CLI (`agy`) as a second backend and fixes security problems that matter now that
 the repository is public.
 
+The project targets .NET 10, the current LTS release (supported until 2028-11-14).
+
 ### Breaking
 
 - The `Bot` and `Gemini` sections were replaced by `BotProfiles[]` and `GeminiProfiles[]`, selected with
@@ -53,7 +55,9 @@ keyring sign-in kept working with the separate `CliHome`.
 
 - The committed chat-history database was removed and secrets moved out of `appsettings.json`.
 - Logs no longer contain message or prompt text.
-- `SQLitePCLRaw.bundle_e_sqlite3` is pinned to 2.1.14 (GHSA-2m69-gcr7-jv3q).
+- Microsoft.* packages updated to 10.0.15, the latest .NET 10 LTS patch. Microsoft.Data.Sqlite now brings in
+  SQLitePCLRaw 2.1.13, outside the range of GHSA-2m69-gcr7-jv3q.
+- `doctor` warns about Node.js 20, which reached end of life on 2026-04-30.
 
 ### Fixed
 

@@ -25,7 +25,7 @@ public sealed record BackendInfo(
             DefaultPolicyPath: "gemini-policies/deny-all-tools.toml",
             RequiredFlags: ["--policy", "--output-format", "--model"],
             InstallCommand: "npm install -g @google/gemini-cli",
-            InstallPrerequisite: "Node.js 20+ (https://nodejs.org). Check with: node --version",
+            InstallPrerequisite: "Node.js 20 or later; use a current LTS (24 or 26) from https://nodejs.org. Check with: node --version",
             UpdateCommand: "npm install -g @google/gemini-cli@latest",
             SignInHint: "Set GeminiApiKey (or the GEMINI_API_KEY environment variable). Personal Google sign-in stopped working on 2026-06-18.",
             DocsUrl: "https://github.com/google-gemini/gemini-cli"),

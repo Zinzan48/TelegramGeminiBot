@@ -24,7 +24,7 @@ so the bot remembers the conversation.
 | Authentication | Paid Gemini API key, or Code Assist Standard/Enterprise | Your Google account (OS keyring) | Gemini API key + `AntigravityAuth: GeminiApiKey` |
 | Who may use the bot | Anyone you allow | Only you (one private chat) | Anyone you allow |
 | Quota | Your API billing | Your personal 5-hour/weekly Antigravity quota | Your API billing |
-| Install | `npm install -g @google/gemini-cli` (Node.js 20+) | Windows: `irm https://antigravity.google/cli/install.ps1 \| iex`<br>macOS/Linux: `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | same as account sign-in |
+| Install | `npm install -g @google/gemini-cli` (needs Node.js, see [Requirements](#requirements)) | Windows: `irm https://antigravity.google/cli/install.ps1 \| iex`<br>macOS/Linux: `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | same as account sign-in |
 
 ### Terms
 
@@ -44,6 +44,16 @@ agy 1.5.9, on 2026-11-15. Asked to read a file containing a fake token, it repli
 `Permission denied for read_file: Matches user-configured deny rule`. With the default `CliHome` the sign-in
 kept working and the conversation did not appear in the personal agy history. agy updates itself, so run
 `doctor` after an update. The Gemini CLI backend was not tested end to end for this release.
+
+## Requirements
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). .NET 10 is the current LTS release, supported
+  until 2028-11-14, and the project targets it. `dotnet --version` should print 10.0.x; install the latest patch,
+  since that is how security fixes arrive.
+- Node.js, for the Gemini CLI backend only. Gemini CLI accepts 20 or later, but Node 20 stopped getting updates on
+  2026-04-30, so pick a current LTS line (24 or 26). `doctor` warns if it finds Node 20.
+- agy, for the Antigravity backend only. It is a standalone program and does not need Node.js.
+- A bot token from [@BotFather](https://t.me/BotFather).
 
 ## Quick start
 

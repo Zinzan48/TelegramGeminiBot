@@ -19,7 +19,7 @@
 | 驗證方式 | 付費 Gemini API key，或 Code Assist Standard／Enterprise | 你的 Google 帳號（存在系統 keyring） | Gemini API key，並設 `AntigravityAuth: GeminiApiKey` |
 | 誰能用這個 bot | 你允許的人 | 只有你自己（限一個私聊） | 你允許的人 |
 | 額度 | 你的 API 帳單 | 你個人的 Antigravity 額度（每 5 小時／每週） | 你的 API 帳單 |
-| 安裝 | `npm install -g @google/gemini-cli`（需要 Node.js 20 以上） | Windows：`irm https://antigravity.google/cli/install.ps1 \| iex`<br>macOS／Linux：`curl -fsSL https://antigravity.google/cli/install.sh \| bash` | 同左 |
+| 安裝 | `npm install -g @google/gemini-cli`（需要 Node.js，見[需求](#需求)） | Windows：`irm https://antigravity.google/cli/install.ps1 \| iex`<br>macOS／Linux：`curl -fsSL https://antigravity.google/cli/install.sh \| bash` | 同左 |
 
 ### 條款
 
@@ -35,6 +35,15 @@ Antigravity 這邊，我們的判斷依據是一則[論壇回覆](https://discus
 2026-11-15 用 agy 1.5.9 測過：叫它讀一個放了假 token 的檔案，它回 `Permission denied for read_file: Matches user-configured deny rule`；
 用預設的 `CliHome` 時登入照常可用，對話也沒有跑進個人的 agy 紀錄。agy 會自己更新，更新後重跑一次 `doctor`。
 Gemini CLI 後端這一版沒有做端到端測試。
+
+## 需求
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)。.NET 10 是目前的 LTS 版本，支援到 2028-11-14，
+  專案就是以它為目標。`dotnet --version` 應該顯示 10.0.x；請裝最新的 patch，安全性修正都靠它進來。
+- Node.js，只有 Gemini CLI 後端需要。Gemini CLI 接受 20 以上，但 Node 20 在 2026-04-30 就停止更新了，
+  請用目前的 LTS（24 或 26）。`doctor` 看到 Node 20 會提醒。
+- agy，只有 Antigravity 後端需要。它是獨立的執行檔，不用裝 Node.js。
+- 向 [@BotFather](https://t.me/BotFather) 申請的 bot token。
 
 ## 快速開始
 
