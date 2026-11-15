@@ -5,6 +5,8 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>dotnet-TelegramGeminiBot-cee1e6dc-7ea9-4c36-94e2-6fea8e92cf36</UserSecretsId>
+		<!-- Local folders that may hold secrets or chat data; never treat their files as content. -->
+		<DefaultItemExcludes>$(DefaultItemExcludes);out/**;publish/**;data/**;gemini-workspace/**;agy-home/**</DefaultItemExcludes>
 	</PropertyGroup>
 
 	<ItemGroup>
