@@ -1,0 +1,12 @@
+# Gemini CLI policy used by TelegramGeminiBot (passed via --policy).
+#
+# Denies every tool, built-in or MCP, so the model can only answer with text.
+# --policy replaces ~/.gemini/policies, and the User tier this rule sits in
+# outranks the CLI's default rules that allow read-only tools.
+# Reference: https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/policy-engine.md
+
+[[rule]]
+toolName = "*"
+decision = "deny"
+priority = 999
+denyMessage = "Tools are disabled for this Telegram bot."

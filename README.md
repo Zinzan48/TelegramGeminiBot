@@ -1,48 +1,192 @@
 # TelegramGeminiBot
 
-Telegram Bot + Gemini CLI (Google login) bridge using .NET Worker Service.
+[![build](https://github.com/Zinzan48/TelegramGeminiBot/actions/workflows/build.yml/badge.svg)](https://github.com/Zinzan48/TelegramGeminiBot/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Prerequisites
-- .NET SDK (net10.0 preview)
-- Node.js 20+ and Gemini CLI installed: `npm install -g @google/gemini-cli`
-- Gemini CLI login: `gemini login`
-- Telegram Bot Token
+> [!IMPORTANT]
+> v0.2.0 has breaking changes. The configuration format changed, and an empty `AllowedChatIds` now
+> means the bot answers nobody. Separately, Gemini CLI stopped accepting personal Google sign-ins on
+> 2026-06-18. Read the [upgrade guide](CHANGELOG.md#upgrading-from-010) before upgrading.
 
-## Configuration
-Edit `TelegramGeminiBot/appsettings.json` (or use environment variables):
+A small .NET 10 worker that connects a Telegram bot to an AI command-line agent:
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) or
+[Antigravity CLI (`agy`)](https://antigravity.google/docs/getting-started). Each message is sent to the CLI
+in headless mode, the answer goes back to Telegram, and the most recent messages in each chat are kept in SQLite
+so the bot remembers the conversation.
 
-```json
-{
-  "Bot": {
-    "Token": "<YOUR_TOKEN>",
-    "Username": "your_bot_username",
-    "AllowedUpdates": [ "Message" ],
-    "GroupMentionRequired": true
-  },
-  "Gemini": {
-    "ExecutablePath": "gemini",
-    "Model": "gemini 3.0 pro",
-    "UseHeadless": true,
-    "PromptTimeoutSeconds": 120,
-    "OutputFormat": "text"
-  },
-  "ChatHistory": {
-    "DatabasePath": "data\\chat-history.db",
-    "MaxMessages": 20
-  }
-}
-```
+[繁體中文說明](README.zh-TW.md)
 
-Environment variable example (prefix with `Bot__`, `Gemini__`, `ChatHistory__`).
+## Choose a backend
 
-## Run
-From repo root:
+| | Gemini CLI | Antigravity CLI, account sign-in | Antigravity CLI, API key |
+|---|---|---|---|
+| `GeminiProfiles[].Backend` | `GeminiCli` | `Antigravity` | `Antigravity` |
+| Authentication | Paid Gemini API key, or Code Assist Standard/Enterprise | Your Google account (OS keyring) | Gemini API key + `AntigravityAuth: GeminiApiKey` |
+| Who may use the bot | Anyone you allow | Only you (one private chat) | Anyone you allow |
+| Quota | Your API billing | Your personal 5-hour/weekly Antigravity quota | Your API billing |
+| Install | `npm install -g @google/gemini-cli` (needs Node.js, see [Requirements](#requirements)) | Windows: `irm https://antigravity.google/cli/install.ps1 \| iex`<br>macOS/Linux: `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | same as account sign-in |
+
+### Terms
+
+Google ended personal sign-in for Gemini CLI on 2026-06-18
+([announcement](https://developers.googleblog.com/en/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)).
+
+For Antigravity, our reading comes from a
+[forum answer](https://discuss.ai.google.dev/t/terms-clarification-personal-antigravity-cli-integration-with-a-multi-ai-orchestrator/187536),
+not from the terms themselves: running the official `agy` from your own scripts is allowed, and letting anyone
+else use your account counts as account sharing. So in account mode the bot will not start unless
+`AllowedChatIds` holds exactly one private chat. Use an API key if other people need the bot, and check the
+current terms before you deploy.
+
+### What has been tested
+
+agy 1.5.9, on 2026-11-15. Asked to read a file containing a fake token, it replied
+`Permission denied for read_file: Matches user-configured deny rule`. With the default `CliHome` the sign-in
+kept working and the conversation did not appear in the personal agy history. agy updates itself, so run
+`doctor` after an update. The Gemini CLI backend was not tested end to end for this release.
+
+## Download a release
+
+Every [release](https://github.com/Zinzan48/TelegramGeminiBot/releases) has six zips, built by GitHub Actions from
+the tagged commit:
+
+| Platform | Includes .NET (zip about 32 MB) | Needs the .NET 10 Runtime (zip about 2.5 MB) |
+|---|---|---|
+| Windows x64 | `…-win-x64-self-contained.zip` | `…-win-x64-framework-dependent.zip` |
+| Linux x64 | `…-linux-x64-self-contained.zip` | `…-linux-x64-framework-dependent.zip` |
+| Linux Arm64 | `…-linux-arm64-self-contained.zip` | `…-linux-arm64-framework-dependent.zip` |
+
+The framework-dependent zips need the [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The
+plain ".NET Runtime" is enough; the ASP.NET Core and Desktop runtimes are not needed.
+
+Unzip it and run the doctor first:
 
 ```bash
+./TelegramGeminiBot doctor        # Windows: .\TelegramGeminiBot.exe doctor
+```
+
+A release build runs in the Production environment and does not read user-secrets. Give it the token and chat
+IDs as environment variables (`BotProfiles__0__Token`, `BotProfiles__0__AllowedChatIds__0`), or edit the
+`appsettings.json` in the unzipped folder, which is your own copy and never leaves your machine. The chat
+database, `gemini-workspace` and `agy-home` are created next to the program.
+
+The executables are not code-signed, so Windows SmartScreen may stop the first run; click "More info", then "Run
+anyway". To check that a zip came from this repository's build:
+
+```bash
+gh attestation verify TelegramGeminiBot-0.2.0-win-x64-self-contained.zip --repo Zinzan48/TelegramGeminiBot
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
+## Requirements
+
+To run from source you need:
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). .NET 10 is the current LTS release, supported
+  until 2028-11-14, and the project targets it. `dotnet --version` should print 10.0.x; install the latest patch,
+  since that is how security fixes arrive.
+- Node.js, for the Gemini CLI backend only. Gemini CLI accepts 20 or later, but Node 20 stopped getting updates on
+  2026-04-30, so pick a current LTS line (24 or 26). `doctor` warns if it finds Node 20.
+- agy, for the Antigravity backend only. It is a standalone program and does not need Node.js.
+- A bot token from [@BotFather](https://t.me/BotFather).
+
+## Quick start
+
+```bash
+git clone https://github.com/Zinzan48/TelegramGeminiBot.git
+cd TelegramGeminiBot
+
+# 1. Check prerequisites. Prints install commands for anything missing.
+dotnet run --project TelegramGeminiBot -- doctor
+#    Install the configured CLI interactively (asks y/N first):
+dotnet run --project TelegramGeminiBot -- doctor --install
+
+# 2. Store secrets outside the repo (loaded in the Development environment)
+dotnet user-secrets --project TelegramGeminiBot set "BotProfiles:0:Token" "<your-bot-token>"
+#    Gemini CLI, or Antigravity with an API key:
+dotnet user-secrets --project TelegramGeminiBot set "GeminiProfiles:0:GeminiApiKey" "<your-gemini-api-key>"
+#    Or use Antigravity with your account: run `agy` once to sign in, then select that profile:
+dotnet user-secrets --project TelegramGeminiBot set "ActiveProfiles:Gemini" "Antigravity"
+
+# 3. Run
 dotnet run --project TelegramGeminiBot
 ```
 
-## Notes
-- Group chats: only responds when @bot is mentioned (or bot command like `/ask@bot`).
-- Gemini CLI headless mode uses stdin piping. Ensure preview features & model are enabled in Gemini CLI if needed (`/settings` + `/model`).
-- If you want to force a specific model, keep `Gemini:Model` set to `gemini 3.0 pro`.
+When you message the bot, it logs `Ignored message from chat <id>`. Put that ID into the allow-list and restart:
+
+```bash
+dotnet user-secrets --project TelegramGeminiBot set "BotProfiles:0:AllowedChatIds:0" "<your-chat-id>"
+```
+
+The bot checks the configured CLI when it starts. If the CLI is missing or too old, it stops right away and
+logs the command that fixes it.
+
+In production, use environment variables. `__` separates sections and array indexes:
+
+```bash
+export BotProfiles__0__Token="<your-bot-token>"
+export BotProfiles__0__AllowedChatIds__0="123456789"
+export GeminiProfiles__0__GeminiApiKey="<your-gemini-api-key>"
+export DOTNET_ENVIRONMENT=Production
+```
+
+## Configuration
+
+All settings live in `TelegramGeminiBot/appsettings.json`. That file is a template, so do not put secrets in it.
+
+### `BotProfiles[]`
+
+| Key | Default | Description |
+|---|---|---|
+| `Name` | `Main` | Profile chosen by `ActiveProfiles:Bot`. One active profile per process. |
+| `Token` | unset | Bot token. Use user-secrets or environment variables. |
+| `Username` | value from Telegram | Bot username without `@`, used for group mentions. |
+| `AllowedChatIds` | `[]` | Chats the bot answers. Empty means none. |
+| `AllowAllChats` | `false` | Answer every chat. Anyone who finds the bot can spend your quota. Not allowed with agy account sign-in. |
+| `GroupMentionRequired` | `true` | In groups, answer only when mentioned or addressed by `/cmd@bot`. |
+| `MaxRequestsPerUserPerMinute` | `10` | Per-user rate limit. `0` disables it. |
+| `AllowedUpdates` | `["Message"]` | Telegram update types to poll. |
+
+### `GeminiProfiles[]`
+
+| Key | Default | Description |
+|---|---|---|
+| `Name` | `Default` / `Antigravity` | Profile chosen by `ActiveProfiles:Gemini`. |
+| `Backend` | `GeminiCli` | `GeminiCli` or `Antigravity`. |
+| `AntigravityAuth` | `Account` | `Account` (owner-only) or `GeminiApiKey`. Used only by the Antigravity backend. |
+| `GeminiApiKey` | unset | Passed as `GEMINI_API_KEY`. Use user-secrets or environment variables. |
+| `ExecutablePath` | `gemini` / `agy` | Looked up on PATH. On Windows `gemini` also finds `gemini.cmd`. |
+| `Model` | CLI default | Passed as `--model`. |
+| `WorkingDirectory` | `./gemini-workspace` | Where the CLI runs. Must not contain the bot's own files. |
+| `CliHome` | `./agy-home` for agy, unset for Gemini CLI | Separate state folder, so the bot does not use your personal CLI configuration, memory, MCP servers or history. `none` turns it off. agy's account sign-in is kept in the OS keyring and keeps working. |
+| `PolicyPath` | per backend | Deny-all tool policy (`--policy` for Gemini CLI, `--settings` for agy). `none` disables it (not recommended). |
+| `PromptTimeoutSeconds` | `120` | The CLI is killed after this long. |
+| `MaxConcurrentProcesses` | `2` | CLI processes at once across all chats. Always 1 for agy account sign-in. |
+
+### `ChatHistory`
+
+| Key | Default | Description |
+|---|---|---|
+| `DatabasePath` | `data/chat-history.db` | SQLite file. Ignored by git. |
+| `MaxMessages` | `20` | Messages kept and sent as context per chat. |
+
+## Security
+
+Whatever Telegram users type becomes input to an AI agent on your machine. By default the bot answers only
+allow-listed chats, the CLI gets no tools, it runs in its own working directory and each user is rate limited.
+[SECURITY.md](SECURITY.md) has the threat model and explains how to report a vulnerability.
+
+Everyone in a group chat shares that group's conversation history.
+
+## Development
+
+```bash
+dotnet build TelegramGeminiBot.slnx
+dotnet test TelegramGeminiBot.slnx
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+## License
+
+[MIT](LICENSE)

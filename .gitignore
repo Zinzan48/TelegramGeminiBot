@@ -361,3 +361,18 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# --- TelegramGeminiBot local data & secrets ---
+# Chat history database (contains user messages)
+TelegramGeminiBot/data/
+*.db
+*.db-shm
+*.db-wal
+# Local-only configuration overrides
+appsettings.*.local.json
+appsettings.local.json
+# Tooling
+.serena/
+# Default Gemini CLI working directory created at runtime
+TelegramGeminiBot/gemini-workspace/
+# Isolated Antigravity CLI state (default CliHome for the Antigravity backend)
+TelegramGeminiBot/agy-home/
