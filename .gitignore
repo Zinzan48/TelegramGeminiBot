@@ -374,3 +374,5 @@ appsettings.local.json
 .serena/
 # Default Gemini CLI working directory created at runtime
 TelegramGeminiBot/gemini-workspace/
+# Isolated Antigravity CLI state (default CliHome for the Antigravity backend)
+TelegramGeminiBot/agy-home/

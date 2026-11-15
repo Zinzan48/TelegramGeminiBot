@@ -34,7 +34,10 @@ account counts as account sharing. That is why the bot refuses to start in accou
 holds exactly one private chat. To serve other people, use an API key. Check the current terms yourself
 before you deploy.
 
-Tested with Gemini CLI `--policy` support and agy 1.5.9. agy updates itself, so run `doctor` after updates.
+Tested with agy 1.5.9 (2026-11-15). Asked to read a file holding a fake token, agy answered
+`Permission denied for read_file: Matches user-configured deny rule`. With the default `CliHome`, its sign-in
+kept working and the conversation stayed out of the personal agy history. agy updates itself, so run `doctor`
+after updates. The Gemini CLI backend has not been tested end-to-end in this release.
 
 ## Quick start
 
@@ -104,7 +107,7 @@ All settings live in `TelegramGeminiBot/appsettings.json`. That file is a templa
 | `ExecutablePath` | `gemini` / `agy` | Looked up on PATH. On Windows `gemini` also finds `gemini.cmd`. |
 | `Model` | CLI default | Passed as `--model`. |
 | `WorkingDirectory` | `./gemini-workspace` | Where the CLI runs. Must not contain the bot's own files. |
-| `CliHome` | — | Separate state folder so the bot does not share your personal CLI configuration, MCP servers or history. Recommended. |
+| `CliHome` | `./agy-home` for agy, none for Gemini CLI | Separate state folder so the bot does not share your personal CLI configuration, memory, MCP servers or history. `none` disables it. For agy, the account sign-in still works because it lives in the OS keyring. |
 | `PolicyPath` | per backend | Deny-all tool policy (`--policy` for Gemini CLI, `--settings` for agy). `none` disables it (not recommended). |
 | `PromptTimeoutSeconds` | `120` | The CLI is killed after this long. |
 | `MaxConcurrentProcesses` | `2` | CLI processes at once across all chats. Always 1 for agy account sign-in. |

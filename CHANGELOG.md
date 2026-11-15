@@ -42,8 +42,11 @@ once the project is public.
   its policy file. If anything is missing, it stops and logs the official install or update command.
 - **`doctor` command.** `dotnet run --project TelegramGeminiBot -- doctor` lists every prerequisite with a fix.
   `doctor --install` runs the official installer after a y/N prompt.
-- `CliHome` keeps the bot away from your personal CLI state (MCP servers, hooks, history). It is passed as
-  `GEMINI_CLI_HOME` to Gemini CLI and as `USERPROFILE`/`HOME` to agy.
+- `CliHome` keeps the bot away from your personal CLI state (memory, MCP servers, hooks, history). It is passed
+  as `GEMINI_CLI_HOME` to Gemini CLI and as `USERPROFILE`/`HOME` to agy. For agy it defaults to `./agy-home`;
+  `none` disables it.
+- Verified with agy 1.5.9: the deny-all settings block file reads (`Permission denied for read_file`), and the
+  isolated `CliHome` keeps the keyring sign-in working.
 - `GeminiApiKey` setting (keep it in user-secrets or environment variables).
 - Per-user rate limit `MaxRequestsPerUserPerMinute` (default 10).
 - MIT license, `SECURITY.md`, English and Traditional Chinese README, GitHub Actions CI, Dependabot, 56 unit tests.

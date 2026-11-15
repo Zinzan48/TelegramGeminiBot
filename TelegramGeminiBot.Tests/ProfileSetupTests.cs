@@ -67,6 +67,22 @@ public class ProfileSetupTests
         Assert.EndsWith(Path.Combine("antigravity-policies", "deny-all-tools.json"), gemini.PolicyPath);
         Assert.Equal(1, gemini.MaxConcurrentProcesses);
         Assert.Equal(Path.Combine(root, "gemini-workspace"), gemini.WorkingDirectory);
+        Assert.Equal(Path.Combine(root, "agy-home"), gemini.CliHome);
+    }
+
+    [Fact]
+    public void ApplyDefaults_CliHomeNone_DisablesIsolation_AndGeminiCliHasNoDefaultHome()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tgb-root");
+        var agy = AgyAccount();
+        agy.CliHome = "none";
+        var gemini = new GeminiOptions();
+
+        ProfileSetup.ApplyGeminiDefaults(agy, root, root, createDirectories: false);
+        ProfileSetup.ApplyGeminiDefaults(gemini, root, root, createDirectories: false);
+
+        Assert.Equal(string.Empty, agy.CliHome);
+        Assert.Equal(string.Empty, gemini.CliHome);
     }
 
     [Fact]

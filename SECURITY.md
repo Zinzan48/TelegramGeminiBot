@@ -34,7 +34,8 @@ Out of scope: an operator who sets `AllowAllChats`, removes the policy, or point
 - If a token was ever committed or shared, revoke it with @BotFather (`/revoke`).
 - Set `CliHome` so the bot does not inherit your personal `~/.gemini`
   configuration (MCP servers, hooks, saved sessions). agy keeps conversations and
-  "knowledge" under the profile folder; without `CliHome`, bot conversations end up in your
-  personal agy history.
+  "knowledge" under the profile folder, so the Antigravity backend isolates them in `./agy-home`
+  by default. Do not set `CliHome: none` for agy: your personal memory would shape answers to
+  Telegram users, and bot conversations would land in your personal history.
 - Run `dotnet run --project TelegramGeminiBot -- doctor` after updating the CLI. agy updates itself.
 - Run the bot as a low-privilege OS account, not as SYSTEM or root.

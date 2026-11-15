@@ -62,7 +62,8 @@ public class GeminiOptions
     /// <summary>
     /// Separate state folder for the CLI so the bot does not share your personal configuration,
     /// MCP servers, hooks or history. Gemini CLI receives it as <c>GEMINI_CLI_HOME</c>; agy ignores
-    /// that variable, so it receives it as <c>USERPROFILE</c>/<c>HOME</c>.
+    /// that variable, so it receives it as <c>USERPROFILE</c>/<c>HOME</c>. Empty means "agy-home"
+    /// under the content root for Antigravity and no isolation for Gemini CLI; <c>none</c> disables it.
     /// </summary>
     public string CliHome { get; set; } = string.Empty;
 

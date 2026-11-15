@@ -29,7 +29,11 @@ Antigravity 的部分，依我們的理解（根據一則[論壇回覆](https://
 所以在帳號登入模式下，`AllowedChatIds` 必須剛好是一個私聊，否則 bot 不會啟動。要給別人用的話，請改用 API key。
 部署前請自行確認最新條款。
 
-測試環境：支援 `--policy` 的 Gemini CLI，以及 agy 1.5.9。agy 會自動更新，更新後請重跑一次 `doctor`。
+實測環境是 agy 1.5.9（2026-11-15）：
+- 要求讀取一個含假 token 的檔案，agy 回覆 `Permission denied for read_file: Matches user-configured deny rule`。
+- 使用預設的 `CliHome` 時，登入依然有效，對話也不會寫進你個人的 agy 紀錄。
+
+agy 會自動更新，更新後請重跑一次 `doctor`。Gemini CLI 後端這個版本沒有做端到端實測。
 
 ## 快速開始
 
@@ -76,8 +80,11 @@ $env:DOTNET_ENVIRONMENT = "Production"
 這個檔案只是範本，請不要把秘密值寫進去。幾個重點：
 
 - `AllowedChatIds` 留空代表**不回應任何人**。`AllowAllChats: true` 會開放給所有人，但 agy 帳號登入模式不允許這樣設。
-- `CliHome` 讓 bot 使用獨立的 CLI 狀態資料夾，不會共用你個人的 MCP server、hooks 和對話紀錄。建議設定。
-  實作上，Gemini CLI 是透過 `GEMINI_CLI_HOME`，agy 則是透過 `USERPROFILE`／`HOME`。
+- `CliHome` 讓 bot 使用獨立的 CLI 狀態資料夾，不會共用你個人的設定、記憶、MCP server 和對話紀錄。
+  - agy 後端預設是 `./agy-home`。登入資訊存在系統 keyring，所以隔離之後依然有效。
+  - Gemini CLI 後端預設不隔離。
+  - 設成 `none` 可以關閉隔離。
+  - 實作上，Gemini CLI 是透過 `GEMINI_CLI_HOME`，agy 則是透過 `USERPROFILE`／`HOME`。
 - `PolicyPath` 預設會封鎖所有工具，模型只能回文字。Gemini CLI 透過 `--policy` 傳入，agy 透過 `--settings`。
 - `WorkingDirectory` 不可以指向含有 bot 自身檔案的資料夾，啟動時會檢查。
 
