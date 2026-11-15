@@ -40,7 +40,7 @@ Gemini CLI 後端這一版沒有做端到端測試。
 
 每個 [release](https://github.com/Zinzan48/TelegramGeminiBot/releases) 都有六個 zip，由 GitHub Actions 從打 tag 的那個 commit 編譯：
 
-| 平台 | 內含 .NET（約 78 MB） | 需要 .NET 10 Runtime（約 8 MB） |
+| 平台 | 內含 .NET（zip 約 32 MB） | 需要 .NET 10 Runtime（zip 約 2.5 MB） |
 |---|---|---|
 | Windows x64 | `…-win-x64-self-contained.zip` | `…-win-x64-framework-dependent.zip` |
 | Linux x64 | `…-linux-x64-self-contained.zip` | `…-linux-x64-framework-dependent.zip` |

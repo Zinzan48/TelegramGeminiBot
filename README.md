@@ -50,7 +50,7 @@ kept working and the conversation did not appear in the personal agy history. ag
 Every [release](https://github.com/Zinzan48/TelegramGeminiBot/releases) has six zips, built by GitHub Actions from
 the tagged commit:
 
-| Platform | Includes .NET (about 78 MB) | Needs the .NET 10 Runtime (about 8 MB) |
+| Platform | Includes .NET (zip about 32 MB) | Needs the .NET 10 Runtime (zip about 2.5 MB) |
 |---|---|---|
 | Windows x64 | `…-win-x64-self-contained.zip` | `…-win-x64-framework-dependent.zip` |
 | Linux x64 | `…-linux-x64-self-contained.zip` | `…-linux-x64-framework-dependent.zip` |
