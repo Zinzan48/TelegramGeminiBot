@@ -185,6 +185,10 @@ dotnet build TelegramGeminiBot.slnx
 dotnet test TelegramGeminiBot.slnx
 ```
 
+Dependency updates from Dependabot land on `develop`. A release merges `develop` into `master` through a pull
+request and tags the merge commit, which starts the release build. Security updates are the exception: they go
+straight to `master` and get merged back into `develop` afterwards. Packages versioned with .NET stay on 10.x.
+
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
