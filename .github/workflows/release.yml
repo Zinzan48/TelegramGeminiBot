@@ -1,10 +1,11 @@
 name: release
 
 # Push a tag such as v0.2.0 to build every package and publish a GitHub Release.
-# Run it manually (workflow_dispatch) to build the packages as workflow artifacts without releasing.
+# Pull requests and manual runs (workflow_dispatch) only build the packages as workflow artifacts.
 on:
   push:
     tags: [ "v*" ]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -88,6 +89,7 @@ jobs:
 
   release:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
