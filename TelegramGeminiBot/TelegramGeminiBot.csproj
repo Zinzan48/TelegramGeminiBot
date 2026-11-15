@@ -11,6 +11,8 @@
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.2" />
+		<!-- Pin the native SQLite bundle above 2.1.11 (GHSA-2m69-gcr7-jv3q) until Microsoft.Data.Sqlite pulls a fixed version. -->
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
 		<PackageReference Include="Telegram.Bot" Version="22.8.1" />
 	</ItemGroup>
 
