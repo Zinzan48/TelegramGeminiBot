@@ -1,45 +1,86 @@
-using System.Collections.Concurrent;
-
 namespace TelegramGeminiBot.Services;
 
+/// <summary>
+/// Serializes work per chat so one chat's history is never read and written concurrently.
+/// Entries are reference-counted and removed only when nobody holds or waits for them.
+/// </summary>
 public sealed class ChatQueue
 {
-    private readonly ConcurrentDictionary<long, SemaphoreSlim> _locks = new();
+    private readonly Dictionary<long, Entry> _entries = new();
+    private readonly object _sync = new();
 
     public async Task<IDisposable> AcquireAsync(long chatId, CancellationToken cancellationToken)
     {
-        var semaphore = _locks.GetOrAdd(chatId, _ => new SemaphoreSlim(1, 1));
-        await semaphore.WaitAsync(cancellationToken);
-        return new Releaser(chatId, semaphore, _locks);
+        Entry entry;
+        lock (_sync)
+        {
+            if (!_entries.TryGetValue(chatId, out entry!))
+            {
+                entry = new Entry();
+                _entries[chatId] = entry;
+            }
+
+            entry.References++;
+        }
+
+        try
+        {
+            await entry.Semaphore.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            Release(chatId, entry, semaphoreHeld: false);
+            throw;
+        }
+
+        return new Releaser(this, chatId, entry);
     }
 
-    private sealed class Releaser : IDisposable
+    /// <summary>Number of chats currently holding or waiting for a lock (for tests and diagnostics).</summary>
+    public int ActiveChats
     {
-        private readonly long _chatId;
-        private readonly SemaphoreSlim _semaphore;
-        private readonly ConcurrentDictionary<long, SemaphoreSlim> _locks;
-        private bool _disposed;
-
-        public Releaser(long chatId, SemaphoreSlim semaphore, ConcurrentDictionary<long, SemaphoreSlim> locks)
+        get
         {
-            _chatId = chatId;
-            _semaphore = semaphore;
-            _locks = locks;
+            lock (_sync)
+            {
+                return _entries.Count;
+            }
         }
+    }
+
+    private void Release(long chatId, Entry entry, bool semaphoreHeld)
+    {
+        if (semaphoreHeld)
+        {
+            entry.Semaphore.Release();
+        }
+
+        lock (_sync)
+        {
+            entry.References--;
+            if (entry.References == 0)
+            {
+                _entries.Remove(chatId);
+                entry.Semaphore.Dispose();
+            }
+        }
+    }
+
+    private sealed class Entry
+    {
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+        public int References { get; set; }
+    }
+
+    private sealed class Releaser(ChatQueue owner, long chatId, Entry entry) : IDisposable
+    {
+        private int _disposed;
 
         public void Dispose()
         {
-            if (_disposed)
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
-                return;
-            }
-
-            _disposed = true;
-            _semaphore.Release();
-
-            if (_semaphore.CurrentCount == 1)
-            {
-                _locks.TryRemove(_chatId, out _);
+                owner.Release(chatId, entry, semaphoreHeld: true);
             }
         }
     }

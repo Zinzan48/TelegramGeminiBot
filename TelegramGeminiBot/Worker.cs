@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -18,6 +19,7 @@ public sealed class Worker : BackgroundService
     private readonly GeminiCliRunner _gemini;
     private readonly ChatQueue _chatQueue;
     private readonly UserRateLimiter _rateLimiter;
+    private readonly ConcurrentDictionary<Task, byte> _inFlight = new();
     private string _botUsername = string.Empty;
     private UpdateType[] _allowedUpdates = [UpdateType.Message];
 
@@ -96,19 +98,31 @@ public sealed class Worker : BackgroundService
             {
                 offset = update.Id + 1;
 
-                try
-                {
-                    await HandleUpdateAsync(update, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to handle update {UpdateId}.", update.Id);
-                }
+                // Handle each update in the background so a slow Gemini call in one chat does not
+                // block every other chat. ChatQueue keeps each chat serialized and GeminiCliRunner
+                // caps the number of concurrent CLI processes.
+                var task = HandleUpdateSafeAsync(update, stoppingToken);
+                _inFlight.TryAdd(task, 0);
+                _ = task.ContinueWith(t => _inFlight.TryRemove(t, out _), TaskScheduler.Default);
             }
+        }
+
+        await Task.WhenAll(_inFlight.Keys);
+    }
+
+    private async Task HandleUpdateSafeAsync(Update update, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await HandleUpdateAsync(update, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutting down.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to handle update {UpdateId}.", update.Id);
         }
     }
 
@@ -181,12 +195,16 @@ public sealed class Worker : BackgroundService
             return;
         }
 
+        // Send first: if delivery fails, the exchange is not stored as if the user had seen it.
+        foreach (var chunk in TelegramMessageSplitter.Split(response))
+        {
+            await _botClient.SendMessage(message.Chat, chunk, cancellationToken: cancellationToken);
+        }
+
         var now = DateTimeOffset.UtcNow;
         await _historyStore.AddMessageAsync(chatId, "User", text, now, cancellationToken);
         await _historyStore.AddMessageAsync(chatId, "Assistant", response, now, cancellationToken);
         await _historyStore.TrimHistoryAsync(chatId, _historyOptions.MaxMessages, cancellationToken);
-
-        await _botClient.SendMessage(message.Chat, response, cancellationToken: cancellationToken);
     }
 
     private UpdateType[] BuildAllowedUpdates()

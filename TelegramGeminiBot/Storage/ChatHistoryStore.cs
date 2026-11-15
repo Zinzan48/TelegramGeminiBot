@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_id_created_utc
 SELECT role, content, created_utc
 FROM chat_messages
 WHERE chat_id = $chatId
-ORDER BY created_utc DESC
+ORDER BY id DESC
 LIMIT $limit;";
         command.Parameters.AddWithValue("$chatId", chatId);
         command.Parameters.AddWithValue("$limit", maxMessages);
@@ -113,7 +113,7 @@ WHERE chat_id = $chatId
 AND id NOT IN (
     SELECT id FROM chat_messages
     WHERE chat_id = $chatId
-    ORDER BY created_utc DESC
+    ORDER BY id DESC
     LIMIT $keepLast
 );";
         command.Parameters.AddWithValue("$chatId", chatId);
