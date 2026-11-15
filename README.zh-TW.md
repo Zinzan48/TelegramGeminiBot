@@ -143,6 +143,9 @@ dotnet build TelegramGeminiBot.slnx
 dotnet test TelegramGeminiBot.slnx
 ```
 
+Dependabot 的套件更新會先合進 `develop`。發版時開 PR 把 `develop` 合進 `master`，再在合併 commit 上打 tag，
+CI 就會開始編譯 Release。安全性更新例外，會直接進 `master`，之後再合回 `develop`。跟著 .NET 一起發版的套件固定在 10.x。
+
 版本變更請見 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 授權

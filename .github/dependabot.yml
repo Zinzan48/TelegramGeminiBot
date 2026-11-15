@@ -1,14 +1,24 @@
 version: 2
 updates:
+  # Version updates collect on develop and reach master together in the next patch release.
+  # Security updates ignore target-branch and always go to master.
   - package-ecosystem: nuget
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
     groups:
       microsoft-extensions:
         patterns: [ "Microsoft.*" ]
+    # The project follows the .NET 10 LTS line; packages versioned with .NET stay on 10.x.
+    ignore:
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "Microsoft.Data.Sqlite"
+        update-types: [ "version-update:semver-major" ]
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
